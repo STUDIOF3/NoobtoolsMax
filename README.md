@@ -21,3 +21,5 @@ Desenvolvido em Python (PySide2) + MaxScript.
 
 ---
 *Projeto Open Source. Sinta-se livre para contribuir!*
+
+Desenvolvido por: NoobDev + Correção com gemini
