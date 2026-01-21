@@ -32,9 +32,16 @@ Esta ferramenta é fornecida "como está" (AS IS), sem garantias de qualquer tip
 Sendo um projeto gratuito e Open Source, **não ofereço suporte técnico oficial** ou garantia de atualizações futuras.
 
 Use por sua conta e risco. Recomendo sempre salvar o seu arquivo do 3ds Max antes de realizar operações em massa.
-
 ---
-
 ☕ **Gostou da ferramenta?**
 Se o NoobTools te poupou horas de trabalho, considere fazer uma doação:
-[Link para o teu Gumroad ou PayPal aqui]
+
+**Nome:** Fernando  
+
+<img src="assets/pix/pix-qrcode.png" alt="PIX QR Code" width="250">
+
+
+
+
+
+
