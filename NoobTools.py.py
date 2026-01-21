@@ -5,11 +5,36 @@ import logging
 import tempfile
 import time
 from datetime import datetime
-from PySide2 import QtWidgets, QtCore, QtGui
+
+# ==============================================================================
+# 0. COMPATIBILIDADE UNIVERSAL (MAX 2020-2024 vs MAX 2025+)
+# ==============================================================================
+try:
+    # Tenta importar PySide6 (Max 2025/2026+)
+    from PySide6 import QtWidgets, QtCore, QtGui
+    IS_PYSIDE6 = True
+except ImportError:
+    try:
+        # Se falhar, tenta PySide2 (Max 2020-2024)
+        from PySide2 import QtWidgets, QtCore, QtGui
+        IS_PYSIDE6 = False
+    except ImportError:
+        # Fallback extremo
+        from PySide import QtWidgets, QtCore, QtGui
+        IS_PYSIDE6 = False
+
+# Helper para lidar com a mudan√ßa de nome de funcoes (exec_ vs exec)
+def qt_exec(obj, *args):
+    if hasattr(obj, 'exec'):
+        return obj.exec(*args)
+    elif hasattr(obj, 'exec_'):
+        return obj.exec_(*args)
+    return None
+
 import pymxs
 
 # ==============================================================================
-# 0. LOGGING
+# 1. LOGGING
 # ==============================================================================
 LOG_FILE = os.path.join(tempfile.gettempdir(), "NoobTools_Log.txt")
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO, filemode='w', format='%(asctime)s - %(message)s')
@@ -18,7 +43,7 @@ def log_info(msg): logging.info(msg); print(f"[NoobTools] {msg}")
 def log_error(msg): logging.error(msg); print(f"[NoobTools Error] {msg}")
 
 # ==============================================================================
-# 1. L”GICA MAXSCRIPT
+# 2. L√ìGICA MAXSCRIPT
 # ==============================================================================
 MAXSCRIPT_LOGIC = """
 global global_NoobTools_LastImported = undefined
@@ -77,7 +102,7 @@ try: pymxs.runtime.execute(MAXSCRIPT_LOGIC)
 except Exception as e: log_error(str(e))
 
 # ==============================================================================
-# 2. THREADING
+# 3. THREADING
 # ==============================================================================
 class WorkerSignals(QtCore.QObject):
     finished = QtCore.Signal(); result_ready = QtCore.Signal(str, QtGui.QIcon)
@@ -97,11 +122,11 @@ class ThumbnailLoader(QtCore.QRunnable):
                 parent_dir = os.path.dirname(folder_path)
                 possible_exts = [".jpg", ".png", ".jpeg", ".bmp"]
                 
-                # 1. Raiz
+                # 1. Busca na Raiz
                 for ext in possible_exts:
                     attempt = os.path.join(parent_dir, asset_name + ext)
                     if os.path.exists(attempt): thumb_path = attempt; break
-                # 2. Pasta interna
+                # 2. Busca na Pasta
                 if not thumb_path and os.path.isdir(folder_path):
                     with os.scandir(folder_path) as entries:
                         for entry in entries:
@@ -134,40 +159,48 @@ class ThumbnailLoader(QtCore.QRunnable):
     def stop(self): self.is_running = False
 
 # ==============================================================================
-# 3. ESTILO
+# 4. ESTILO VISUAL
 # ==============================================================================
 DARK_THEME_STYLESHEET = """
 QWidget { background-color: #1e1e1e; color: #e0e0e0; font-family: "Segoe UI", sans-serif; font-size: 11px; }
+
+/* Group Box */
 QGroupBox { border: 1px solid #333; border-radius: 4px; margin-top: 8px; padding-top: 15px; font-weight: bold; color: #777; background-color: #222222; }
 QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 3px; left: 10px; background-color: #222222; }
+
+/* Buttons */
 QPushButton { background-color: #333337; border: 1px solid #2a2a2a; border-radius: 3px; color: #cccccc; padding: 6px; min-height: 22px; }
 QPushButton:hover { background-color: #454549; color: #ffffff; border: 1px solid #555; }
 QPushButton:pressed { background-color: #222; }
 QPushButton:checked { background-color: #007acc; border: 1px solid #005f9e; color: white; font-weight: bold; }
+QPushButton#btnImport { background-color: #007acc; color: white; font-weight: bold; font-size: 13px; padding: 12px; border-radius: 4px; border: none; }
+QPushButton#btnImport:hover { background-color: #008be6; }
 
+/* Inputs */
 QLineEdit, QComboBox { background-color: #181818; border: 1px solid #3e3e42; border-radius: 3px; padding: 5px; color: white; }
+
+/* List Widget */
 QListWidget { background-color: #181818; border: 1px solid #333; border-radius: 4px; padding: 5px; outline: none; }
 QListWidget::item { background-color: #252526; border-radius: 4px; }
 QListWidget::item:selected { background-color: #333; border: 1px solid #007acc; }
 QListWidget::item:hover { background-color: #2d2d30; border: 1px solid #444; }
 
-/* Progress Bar */
-QProgressBar {
-    border: 1px solid #333;
-    border-radius: 3px;
-    background-color: #181818;
-    text-align: center;
-    color: white;
-    font-weight: bold;
-}
-QProgressBar::chunk {
-    background-color: #007acc;
-    width: 10px;
-    margin: 0.5px;
-}
+/* Scrollbar (Sem Azul) */
+QScrollBar:vertical { border: none; background: #181818; width: 14px; margin: 0px; }
+QScrollBar::handle:vertical { background: #444; min-height: 20px; border-radius: 4px; margin: 2px; }
+QScrollBar::handle:vertical:hover { background: #555; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; background: none; border: none; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: #181818; border: none; }
 
-QPushButton#btnImport { background-color: #007acc; color: white; font-weight: bold; font-size: 13px; padding: 12px; border-radius: 4px; border: none; }
-QPushButton#btnImport:hover { background-color: #008be6; }
+QScrollBar:horizontal { border: none; background: #181818; height: 14px; margin: 0px; }
+QScrollBar::handle:horizontal { background: #444; min-width: 20px; border-radius: 4px; margin: 2px; }
+QScrollBar::handle:horizontal:hover { background: #555; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; background: none; border: none; }
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: #181818; border: none; }
+
+/* Progress Bar */
+QProgressBar { border: 1px solid #333; border-radius: 3px; background-color: #181818; text-align: center; color: white; font-weight: bold; }
+QProgressBar::chunk { background-color: #007acc; width: 10px; margin: 0.5px; }
 
 /* Status Labels */
 QLabel#lblInfoTitle { color: #888; font-weight: bold; }
@@ -181,7 +214,7 @@ def get_max_main_window():
     return app.activeWindow()
 
 # ==============================================================================
-# 4. JANELA PRINCIPAL
+# 5. JANELA PRINCIPAL
 # ==============================================================================
 class NoobToolsWindow(QtWidgets.QDialog):
     def __init__(self, parent=None):
@@ -255,11 +288,9 @@ class NoobToolsWindow(QtWidgets.QDialog):
         self.asset_list.setMovement(QtWidgets.QListWidget.Static)
         main_layout.addWidget(self.asset_list)
 
-        # --- NOVO: STATUS & INFO AREA ---
+        # --- INFO AREA ---
         info_group = QtWidgets.QGroupBox("ASSET INFO")
         info_layout = QtWidgets.QVBoxLayout()
-        
-        # Grid para informaÁıes
         stats_layout = QtWidgets.QGridLayout()
         stats_layout.setSpacing(5)
         
@@ -281,7 +312,6 @@ class NoobToolsWindow(QtWidgets.QDialog):
         info_layout.addLayout(stats_layout)
         info_group.setLayout(info_layout)
         main_layout.addWidget(info_group)
-        # --------------------------------
 
         # 4. Tools
         tools_layout = QtWidgets.QHBoxLayout()
@@ -309,7 +339,7 @@ class NoobToolsWindow(QtWidgets.QDialog):
         manage_group.setLayout(m_layout)
         main_layout.addWidget(manage_group)
 
-        # --- NOVO: PROGRESS BAR ---
+        # Progress Bar
         self.progress_bar = QtWidgets.QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
@@ -317,7 +347,6 @@ class NoobToolsWindow(QtWidgets.QDialog):
         self.progress_bar.setFormat("Ready")
         self.progress_bar.setStyleSheet("font-size: 10px; height: 12px;")
         main_layout.addWidget(self.progress_bar)
-        # --------------------------
 
         # 6. Import
         self.btn_import = QtWidgets.QPushButton(">>> IMPORT TO SCENE <<<")
@@ -330,8 +359,6 @@ class NoobToolsWindow(QtWidgets.QDialog):
         self.combo_category.currentIndexChanged.connect(self.load_assets_from_combo)
         self.input_search.textChanged.connect(self.filter_assets)
         self.asset_list.itemDoubleClicked.connect(self.run_import_logic)
-        
-        # Conex„o para atualizar info ao clicar no item
         self.asset_list.itemClicked.connect(self.update_asset_info)
         self.asset_list.currentItemChanged.connect(self.update_asset_info)
 
@@ -339,7 +366,6 @@ class NoobToolsWindow(QtWidgets.QDialog):
         self.btn_close.clicked.connect(lambda: self.safe_execute("max group close"))
         self.btn_group.clicked.connect(lambda: self.safe_execute("max group group"))
         self.btn_ungroup.clicked.connect(lambda: self.safe_execute("max group ungroup"))
-        
         self.btn_base_z.clicked.connect(self.run_pivot_base_z)
         self.btn_reset_xform.clicked.connect(self.run_reset_xform)
         self.btn_relink.clicked.connect(self.run_relink_only)
@@ -349,7 +375,6 @@ class NoobToolsWindow(QtWidgets.QDialog):
 
     # --- INFO & STATS ---
     def update_asset_info(self):
-        """Atualiza o painel de informaÁıes com dados do arquivo 3D"""
         item = self.asset_list.currentItem()
         if not item:
             self.lbl_info_name.setText("-")
@@ -358,33 +383,22 @@ class NoobToolsWindow(QtWidgets.QDialog):
             return
 
         asset_path = item.data(QtCore.Qt.UserRole)
-        # Procura o arquivo principal
         target_file = None
         for ext in ["*.max", "*.fbx", "*.skp", "*.obj"]:
             found = glob.glob(os.path.join(asset_path, ext))
-            if found:
-                target_file = found[0]
-                break
+            if found: target_file = found[0]; break
         
         if target_file:
-            # Info do Arquivo
             try:
                 stats = os.stat(target_file)
                 size_mb = stats.st_size / (1024 * 1024)
                 mod_time = datetime.fromtimestamp(stats.st_mtime).strftime('%Y-%m-%d')
-                
                 self.lbl_info_name.setText(os.path.basename(target_file))
-                
-                # FormataÁ„o de Cor para arquivos pesados (>100MB)
                 size_str = f"{size_mb:.2f} MB"
-                if size_mb > 100:
-                    self.lbl_info_size.setText(f"Size: <span style='color:#ff5555'>{size_str}</span>")
-                else:
-                    self.lbl_info_size.setText(f"Size: {size_str}")
-                    
+                if size_mb > 100: self.lbl_info_size.setText(f"Size: <span style='color:#ff5555'>{size_str}</span>")
+                else: self.lbl_info_size.setText(f"Size: {size_str}")
                 self.lbl_info_date.setText(f"Date: {mod_time}")
-            except:
-                self.lbl_info_name.setText("Error reading file")
+            except: self.lbl_info_name.setText("Error reading file")
         else:
             self.lbl_info_name.setText("No 3D file found")
             self.lbl_info_size.setText("Size: -")
@@ -393,7 +407,6 @@ class NoobToolsWindow(QtWidgets.QDialog):
     def update_progress(self, val, message):
         self.progress_bar.setValue(val)
         self.progress_bar.setFormat(message)
-        # ForÁa a atualizaÁ„o da UI do Qt mesmo com o script rodando
         QtWidgets.QApplication.processEvents()
 
     # --- FILTROS ---
@@ -416,7 +429,6 @@ class NoobToolsWindow(QtWidgets.QDialog):
             item = self.asset_list.item(i)
             folder_path = item.data(QtCore.Qt.UserRole)
             asset_name = os.path.basename(folder_path).lower()
-            
             match_name = search_text in asset_name
             match_type = True
             if mode != "ALL":
@@ -429,18 +441,21 @@ class NoobToolsWindow(QtWidgets.QDialog):
             
         self.lbl_info_count.setText(f"Items: {visible_count}")
 
-    # --- FAVORITOS ---
+    # --- FAVORITOS (UNIVERSAL MENU FIX) ---
     def open_favorites_menu(self, pos):
         menu = QtWidgets.QMenu(self)
         menu.setStyleSheet(DARK_THEME_STYLESHEET)
-        menu.addAction("? Add Current to Favorites").triggered.connect(self.add_favorite)
+        menu.addAction("‚≠ê Add Current to Favorites").triggered.connect(self.add_favorite)
         menu.addSeparator()
         if not self.favorites: menu.addAction("No favorites saved").setEnabled(False)
         else:
             for fav in self.favorites:
-                menu.addAction(f"?? {os.path.basename(fav)}").triggered.connect(lambda c=False, p=fav: self.load_favorite(p))
+                # Usar lambda seguro para PySide2/6
+                menu.addAction(f"üìÇ {os.path.basename(fav)}").triggered.connect(lambda c=False, p=fav: self.load_favorite(p))
         menu.addSeparator(); menu.addAction("Clear Favorites").triggered.connect(self.clear_favorites)
-        menu.exec_(self.btn_lib.mapToGlobal(pos))
+        
+        # Executa o menu com compatibilidade (exec_ vs exec)
+        qt_exec(menu, self.btn_lib.mapToGlobal(pos))
 
     def add_favorite(self):
         if self.root_path and os.path.isdir(self.root_path) and self.root_path not in self.favorites:
@@ -482,7 +497,7 @@ class NoobToolsWindow(QtWidgets.QDialog):
         try: subfolders = [f for f in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, f))]
         except: return
 
-        self.lbl_info_count.setText(f"Items: {len(subfolders)}") # Atualiza contagem total
+        self.lbl_info_count.setText(f"Items: {len(subfolders)}")
 
         assets_to_load = []
         for asset_name in subfolders:
@@ -514,13 +529,11 @@ class NoobToolsWindow(QtWidgets.QDialog):
         if not file_to_import: QtWidgets.QMessageBox.warning(self, "Error", "No 3D file found."); return
 
         try:
-            # 1. Start Import
             self.update_progress(10, "Starting Import...")
             rt = pymxs.runtime
             log_info(f"Importing: {file_to_import}")
             file_lower = file_to_import.lower()
             
-            # 2. Importing
             self.update_progress(30, f"Importing {os.path.splitext(os.path.basename(file_to_import))[1]}...")
             
             if file_lower.endswith(".max"):
@@ -532,18 +545,14 @@ class NoobToolsWindow(QtWidgets.QDialog):
             else:
                 rt.importFile(file_to_import)
             
-            # 3. Relinking
             self.update_progress(60, "Relinking Textures...")
             self.run_relink_internal(asset_path, silent=True)
             
-            # 4. Pivots
             self.update_progress(80, "Adjusting Pivots...")
             self.run_pivot_base_z()
             rt.redrawViews()
             
-            # 5. Finish
             self.update_progress(100, "Import Complete!")
-            # Reset after 2 seconds
             QtCore.QTimer.singleShot(2000, lambda: self.update_progress(0, "Ready"))
             
         except Exception as e:
