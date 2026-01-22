@@ -24,6 +24,10 @@ Desenvolvido em Python (PySide2) + MaxScript.
 
 ---
 
+## Apresentação
+
+[Apresentação da Ferramenta no Youtube]([https://github.com](https://www.youtube.com/watch?v=u8Hq5xZ0S7c))
+
 _Projeto Open Source. Sinta-se livre para contribuir!_
 
 ## ⚠️ Disclaimer (Aviso Legal)
