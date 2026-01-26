@@ -25,7 +25,6 @@ Desenvolvido em Python (PySide2) + MaxScript.
 ---
 
 ## Apresentação
-<iframe src="[https://youtube.com/...](https://www.youtube.com/watch?v=u8Hq5xZ0S7c)"></iframe>
 
 [Apresentação da Ferramenta no Youtube](https://www.youtube.com/watch?v=u8Hq5xZ0S7c)
 
