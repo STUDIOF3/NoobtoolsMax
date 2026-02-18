@@ -40,6 +40,3 @@ Sendo um projeto gratuito e Open Source, **não ofereço suporte técnico oficia
 ☕ **Gostou da ferramenta?**
 
 Se o NoobTools te poupou horas de trabalho, considere fazer uma doação:
-
-
-<img src="assets/pix/pix-qrcode.jpeg" alt="PIX QR Code" width="250">
