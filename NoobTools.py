@@ -702,7 +702,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super(NoobToolsWindow, self).__init__(parent, QtCore.Qt.Window | QtCore.Qt.Tool)
 
-        self.setWindowTitle("NoobTools Suite v3.5 - Modern & Smooth UI")
+        self.setWindowTitle("NoobTools Suite v3.5")
         self.resize(480, 920)
         self.setMinimumSize(480, 820)
         self.setStyleSheet(MODERN_THEME_STYLESHEET) 
