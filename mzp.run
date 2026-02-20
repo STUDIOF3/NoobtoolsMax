@@ -1,0 +1,9 @@
+name "NoobTools_Installer"
+version 3.2
+
+extract to "$temp\NoobTools_Install_Temp"
+
+run "$temp\NoobTools_Install_Temp\install.ms"
+drop "$temp\NoobTools_Install_Temp\install.ms"
+
+clear temp on MAX exit
