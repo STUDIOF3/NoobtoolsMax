@@ -2,83 +2,81 @@
 
 ![Preview do NoobTools Suite](assets/preview.png)
 
-O **NoobTools Suite** é um plugin avançado e completo desenvolvido em Python (PySide) e MaxScript para o Autodesk 3ds Max. O seu principal objetivo é otimizar o fluxo de trabalho de artistas 3D, oferecendo um gestor de bibliotecas de modelos ultrarrápido, interface moderna e ferramentas inteligentes para diagnóstico e reparação de cenas (relink).
+O **NoobTools Suite** é um plugin avançado e super completo, desenvolvido em Python (PySide) e MaxScript para o Autodesk 3ds Max. A ideia principal dele é acelerar e facilitar a vida dos artistas 3D. Ele traz um gerenciador de bibliotecas de modelos super rápido, uma interface moderna e ferramentas inteligentes para diagnosticar a cena e dar relink em arquivos perdidos.
 
 ---
 
-## ✨ Funcionalidades Completas
+## ✨ Funcionalidades
 
-A ferramenta está dividida em 4 abas principais, cada uma desenhada para otimizar uma parte específica do teu fluxo de trabalho:
+A ferramenta é dividida em 4 abas, cada uma pensada para resolver uma parte chata do fluxo de trabalho:
 
-### 1. 📦 Asset Manager (Gestor de Biblioteca)
+### 1. 📦 Asset Manager (Gerenciador de Biblioteca)
 
-- **Gestão de Pastas e Favoritos:** Seleciona a pasta raiz da tua biblioteca. Clica com o botão direito no botão para adicionar ou aceder rapidamente aos teus caminhos Favoritos.
-- **Filtros Inteligentes e Pesquisa:** Navega automaticamente por Categorias e Subcategorias. Filtra ficheiros por formato (`.MAX`, `.FBX`, `.SKP`, `.OBJ`) ou utiliza a barra de pesquisa de texto.
-- **Miniaturas Assíncronas (Thumbnails):** O plugin gera e armazena em cache as miniaturas dos teus modelos em segundo plano. O 3ds Max nunca congela enquanto navegas!
-- **Deteção de Renderizador:** Sem precisar abrir o ficheiro, o plugin lê os metadados do `.max` e mostra na aba "Asset Info" qual o motor de render utilizado (V-Ray, Corona, Arnold, FStorm, etc.).
-- **Importação Avançada e em Massa:** \* Seleciona um ou vários assets e importa-os de uma só vez (Batch Import) com uma barra de progresso fluida.
-  - Opções automáticas para organizar os objetos em **Camadas (Auto Layer)** e adicionar **Prefixos**.
-- **Ferramentas de Hierarquia (Tools):** Agrupa, desagrupa, abre ou fecha grupos diretamente pela interface antes ou depois de importar.
+- **Pastas e Favoritos:** Escolha a pasta raiz da sua biblioteca. Clique com o botão direito para favoritar caminhos e acessar suas pastas mais usadas com um clique.
+- **Filtros e Pesquisa:** Navegue automaticamente por Categorias e Subcategorias. Filtre os arquivos pelo formato (`.MAX`, `.FBX`, `.SKP`, `.OBJ`) ou digite o que precisa na barra de busca.
+- **Miniaturas Inteligentes (Thumbnails):** O plugin gera e salva as miniaturas dos seus blocos em segundo plano. Isso significa que o 3ds Max não trava enquanto você navega pelas pastas!
+- **Leitor de Renderizador:** Sem precisar abrir o arquivo, o plugin lê as informações do `.max` e te avisa na aba "Asset Info" qual motor de render foi usado para criar aquele bloco (V-Ray, Corona, Arnold, FStorm, etc.).
+- **Importação em Massa (Batch Import):** \* Selecione um ou vários blocos e importe tudo de uma vez. Acompanhe pelo carregamento fluido da barra de progresso.
+  - Tem opções automáticas para jogar os blocos em **Layers (Auto Layer)** e colocar **Prefixos** no nome dos objetos.
+- **Ferramentas de Hierarquia (Tools):** Agrupe, desagrupe, abra ou feche grupos direto pela interface, sem precisar ficar caçando as opções no Max.
 
 ### 2. 🔗 NoobFix (Diagnóstico e Relink)
 
-- **Scan Inteligente de Cena:** Analisa a tua cena atual e lista todos os _assets_ (texturas, proxies, etc.) que estão em falta.
-- **Seleção Direta:** Clica duas vezes num ficheiro em falta na lista para selecionar automaticamente os objetos na cena que estão a usar esse material!
-- **Relink em Background:** Procura texturas perdidas numa pasta raiz (e subpastas). O processo roda numa _Thread_ separada, permitindo que continues a usar o 3ds Max enquanto ele religa milhares de ficheiros.
-- **Ferramentas de Diagnóstico:**
-  - `STRIP`: Remove caminhos de rede quebrados de forma irreversível e limpa a tua cena.
-  - `UNC`: Converte caminhos locais (ex: `C:\texturas`) para caminhos de rede absolutos.
-  - `COLETAR`: Copia todas as texturas usadas na cena diretamente para a pasta "Maps" do teu projeto atual.
-- **Opções de Relink:** Podes escolher ignorar extensões (útil se trocaste de JPG para PNG) e incluir subpastas na procura.
+- **Scan da Cena:** Lê a cena atual e mostra uma lista com todos os assets (texturas, proxies, etc.) que estão faltando.
+- **Seleção Direta:** Dê um duplo clique em um arquivo da lista para selecionar automaticamente os objetos 3D que estão usando aquele material problemático.
+- **Relink em Background:** Ele busca as texturas perdidas em uma pasta e nas subpastas usando uma _Thread_ separada. Você pode continuar trabalhando no Max enquanto ele relinka milhares de arquivos silenciosamente!
+- **Ferramentas Extras:**
+  - `STRIP`: Remove caminhos quebrados da cena de forma definitiva para manter o arquivo leve e limpo.
+  - `UNC`: Converte caminhos locais (ex: `C:\texturas`) para caminhos de rede universais.
+  - `COLETAR`: Copia todas as texturas usadas na cena direto para a pasta "Maps" do seu projeto atual.
+- **Opções de Busca:** Dá para escolher ignorar as extensões (ótimo se você trocou um JPG por um PNG, por exemplo).
 
 ### 3. 🕒 History (Histórico)
 
-- Um registo organizado em tabela que mostra tudo o que foi importado recentemente.
-- Consulta facilmente a **Data, Hora, Nome do Ficheiro e Tipo** das tuas últimas importações.
-- Possibilidade de limpar ou atualizar o histórico manualmente.
+- Uma tabela organizada que registra tudo o que você importou recentemente.
+- Veja a **Data, Hora, Nome do Arquivo e Tipo** das suas últimas importações. Se errar e perder o bloco na cena, você sabe exatamente o que foi puxado.
 
 ### 4. ⚙️ Settings (Configurações)
 
-- **Auto-Backup:** Uma funcionalidade de segurança salva automaticamente uma cópia da tua cena (na pasta `_backup`) antes de ações que alteram muito a cena (como importações massivas ou usar o _Strip_).
-- **Gestão de Cache:** Visualiza em tempo real o tamanho (em MB) que as miniaturas estão a ocupar no teu disco e limpa a cache com apenas um clique para libertar espaço.
+- **Auto-Backup:** Uma trava de segurança muito útil. Ele salva uma cópia da sua cena (na pasta `_backup`) antes de você rodar ações destrutivas, como usar o _Strip_ ou importar muita coisa.
+- **Limpeza de Cache:** Veja na hora quanto espaço em disco (MB) as miniaturas estão ocupando e limpe a cache com um clique para liberar espaço.
 
 ---
 
 ## 🎨 Interface Gráfica (UI/UX)
 
-- **Modern & Smooth UI:** Design totalmente customizado em tons escuros (Dark Mode), ideal para artistas 3D.
-- **Responsividade:** Scrollbars personalizadas, botões com áreas de clique maximizadas e ponteiro do rato interativo.
-- A janela do script é "ancorada" nativamente ao 3ds Max, respeitando as sobreposições de janelas do Windows.
+- **Design Moderno:** Interface escura e limpa (Dark Mode), pensada para quem passa o dia inteiro modelando ou renderizando.
+- **Responsiva:** Barras de rolagem customizadas, botões fáceis de clicar (hitbox arrumada) e o mouse muda para a "mãozinha" para dar um feedback visual legal.
 
 ---
 
 ## 💻 Requisitos do Sistema
 
-- **Autodesk 3ds Max:** Compatível com versões de 2020 a 2025+.
-- **Motor:** Funciona com o ambiente Python nativo do 3ds Max (suporta PySide2 e PySide6 automaticamente).
+- **Autodesk 3ds Max:** Compatível com versões de 2020 até 2025+.
+- **Motor:** Funciona usando o Python nativo do próprio 3ds Max (reconhece e suporta PySide2 e PySide6 automaticamente).
 
 ---
 
 ## 🚀 Como Instalar
 
-O plugin é distribuído num instalador empacotado (`.mzp`), tornando o processo muito simples:
+O plugin já vem empacotado em um instalador (`.mzp`), então é bem fácil de colocar para rodar:
 
-1. Descarrega o ficheiro de instalação `.mzp` aqui do repositório (na secção de _Releases_).
-2. Abre o **Autodesk 3ds Max**.
-3. No menu superior, vai a **`Scripting` > `Run Script...`** _(Em versões mais antigas do Max, o menu chama-se apenas `MAXScript`)_.
-4. Seleciona o ficheiro `.mzp` que descarregaste e clica em **Open**.
-5. O instalador fará o resto! _(Nota: Arrastar e soltar o ficheiro `.mzp` diretamente na viewport não funciona, por favor utiliza o menu Run Script)._
-6. Podes agora atribuir a ferramenta a um atalho ou botão na tua _Toolbar_ através do menu `Customize User Interface`.
+1. Baixe o arquivo de instalação `.mzp` aqui do repositório (na área de _Releases_).
+2. Abra o seu **Autodesk 3ds Max**.
+3. No menu lá em cima, vá em **`Scripting` > `Run Script...`** _(Em versões mais antigas, o menu se chama só `MAXScript`)_.
+4. Escolha o arquivo `.mzp` que você baixou e clique em **Open**.
+5. O instalador faz o resto! _(Aviso: não tente arrastar e soltar o `.mzp` direto na tela (viewport) porque não vai funcionar. Use sempre o menu Run Script)._
+6. Depois disso, é só colocar a ferramenta em um atalho de teclado ou num botão da sua _Toolbar_ pelo menu `Customize User Interface`.
 
 ---
 
 ## 👨‍💻 Contribuições
 
-Este é um projeto em constante evolução. Sentes que falta alguma ferramenta, tens ideias para melhorar o código ou encontraste algum _bug_?
-Sente-te à vontade para abrir uma _Issue_ ou submeter um _Pull Request_!
+Este projeto está sempre evoluindo. Sentiu falta de alguma funcionalidade, tem ideias para melhorar o código ou achou algum _bug_?
+Fique à vontade para abrir uma _Issue_ ou mandar um _Pull Request_!
 
 ---
 
 ## 📄 Licença
 
-Este projeto é de código aberto e está disponível sob a licença MIT. Sente-te livre para usar, modificar e distribuir.
+Projeto de código aberto sob a licença MIT. Sinta-se livre para usar, estudar, modificar e compartilhar.
