@@ -61,7 +61,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super(NoobToolsWindow, self).__init__(parent, QtCore.Qt.Window | QtCore.Qt.Tool)
 
-        self.setWindowTitle("NoobTools Suite v3.5 - Modern & Smooth UI")
+        self.setWindowTitle("NoobTools Suite v4.12 - Modern & Smooth UI")
         self.resize(480, 920)
         self.setMinimumSize(480, 820)
         self.setStyleSheet(MODERN_THEME_STYLESHEET) 
@@ -107,7 +107,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
         layout_principal.setContentsMargins(12, 12, 12, 12)
         self.setLayout(layout_principal)
 
-        title_label = QtWidgets.QLabel("NOOBTOOLS SUITE v4.0")
+        title_label = QtWidgets.QLabel("NOOBTOOLS SUITE v4.12")
         title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #007acc;")
         title_label.setAlignment(QtCore.Qt.AlignCenter)
         layout_principal.addWidget(title_label)

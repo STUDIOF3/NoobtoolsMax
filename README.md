@@ -18,7 +18,9 @@ O **NoobTools Suite** é um conjunto de ferramentas modulares desenvolvidas em P
   - **Context Menu:** Opções para enviar materiais específicos para o **Slate Editor** ou **Compact Editor** (forçando o modo correto).
 
 ### 🛠️ NoobFix (Scene Tools)
-- **Scene Cleaner:** Remove camadas vazias, grupos vazios e limpa a cena com feedback detalhado em popup.
+- **Relink Scanner Pro:** Sistema avançado de busca e correção de assets perdidos (Bitmaps, V-Ray, Corona, FStorm).
+- **Collect Assets:** Ferramenta para coletar todos os assets da cena para uma pasta de projeto (Move to Project).
+- **Scene Cleaner:** Remove camadas vazias, grupos vazios e limpa a cena com feedback detalhado.
 - **Scale Checker:** Audita as Unidades do Sistema (System Units) e o fator de escala de objetos selecionados.
 - **Asset Tracker Refresh:** Atalho rápido para atualizar caminhos de texturas.
 
@@ -38,6 +40,12 @@ O **NoobTools Suite** é um conjunto de ferramentas modulares desenvolvidas em P
 ---
 
 ## 📜 Changelog
+
+### [v4.12] - 2026-03-06
+- **New Feature:** **Relink Scanner** integrado ao NoobFix para busca massiva de assets perdidos.
+- **New Feature:** **Collect Assets** (Copy to Project) para organizar bibliotecas externas.
+- **Enhancement:** Detecção de renderizador (V-Ray, Corona, Arnold) no painel de info do Asset Manager.
+- **Versão:** Sincronização global da versão para `v4.12`.
 
 ### [v4.11] - 2026-03-06
 - **Fix:** Previews (bolinhas) agora compatíveis com Corona, VRay e FStorm (não ficam mais pretos).

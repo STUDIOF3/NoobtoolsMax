@@ -1,5 +1,5 @@
 name "NoobTools_Installer"
-version 4.0
+version 4.12
 
 extract to "$temp\NoobTools_Install_Temp"
 
