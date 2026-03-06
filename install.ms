@@ -1,79 +1,67 @@
 (	
 	clearListener()
-	format "--- Iniciando Instalação NoobTools v3 ---\n"
-	-- 1. DEFINIR A ORIGEM 
+	format "--- Iniciando Instalacao NoobTools Modular ---\n"
+	
 	local tempFolder = ( getDir #temp )+ "\\NoobTools_Install_Temp"
-	local scriptName = "NoobTools_Main.py"
-	local sourceFile = tempFolder + "\\" + scriptName
-	-- 2. DEFINIR O DESTINO
 	local userScripts = getDir #userScripts
 	local installDir = userScripts + "\\NoobViz"
-	local destFile = installDir + "\\" + scriptName
-	-- 3. VERIFICAR E INSTALAR
-	if( doesFileExist sourceFile ) then
-	(		
-		-- Criar pasta
-		if not( doesDirectoryExist installDir ) do
-			makeDir installDir
-		-- Remover versão antiga
-		if doesFileExist destFile do
-			deleteFile destFile
-		-- Copiar o arquivo
-		copyFile sourceFile destFile
+	
+	if not( doesDirectoryExist installDir ) do makeDir installDir
+	
+	-- Copiar a pasta src inteira
+	local sourceSrcFolder = tempFolder + "\\src"
+	local destSrcFolder = installDir + "\\src"
+	
+	local xcopyCmd = "xcopy /E /Y /I /Q \"" + sourceSrcFolder + "\" \"" + destSrcFolder + "\""
+	HiddenDOSCommand xcopyCmd
+	
+	local destFile = installDir + "\\src\\main.py"
+	
+	if( doesFileExist destFile ) then
+	(
 		format "Script copiado com sucesso para: %\n" destFile
-		-- 4. GERAR ÍCONE (CORRIGIDO: filename inserido na criação)
+		
+		-- GERAR ICONE
 		local iconDir = getDir #userIcons
 		local iconFile = iconDir + "\\NoobViz_24i.bmp"
-		-- Deletar ícone antigo se existir
-		if( doesFileExist iconFile ) do
-			deleteFile iconFile
-		-- AQUI ESTAVA O ERRO: Adicionei "filename:iconFile"
-		local bmp = bitmap 24 24 filename: iconFile color:( color 35 35 35 )
+		if( doesFileExist iconFile ) do deleteFile iconFile
+		
+		local bmp = bitmap 24 24 filename:iconFile color:( color 35 35 35 )
 		local cBlue = ( color 0 122 204 )
-		-- Desenha bordas
-		for x = 0 to 23 do
-		(			
-			setPixels bmp[0, x] #( cBlue )
-			setPixels bmp[x, 0] #( cBlue )
-			setPixels bmp[23, x] #( cBlue )
-			setPixels bmp[x, 23] #( cBlue )
-		)
-		-- Preenche o centro
-		for y = 5 to 18 do
-		(			
-			for x = 5 to 18 do
-				setPixels bmp[x, y] #( cBlue )
-		)
-		save bmp -- Agora ele sabe onde salvar!
-		close bmp
-		format "Ícone criado em: %\n" iconFile
-		-- 5. REGISTRAR MACRO
+		for x = 0 to 23 do ( setPixels bmp[0, x] #( cBlue ); setPixels bmp[x, 0] #( cBlue ); setPixels bmp[23, x] #( cBlue ); setPixels bmp[x, 23] #( cBlue ) )
+		for y = 5 to 18 do ( for x = 5 to 18 do setPixels bmp[x, y] #( cBlue ) )
+		save bmp; close bmp
+		
+		-- REGISTRAR MACRO
 		local macroContent = ""
 		macroContent += "macroScript NoobTools\n"
 		macroContent += "category:\"NoobViz\"\n"
-		macroContent += "tooltip:\"NoobTools Suite v3\"\n"
+		macroContent += "tooltip:\"NoobTools Suite\"\n"
 		macroContent += "icon:#(\"NoobViz\", 1)\n"
 		macroContent += "(\n"
 		macroContent += "    on execute do (\n"
 		macroContent += "        local f = @\"" + destFile + "\"\n"
-		macroContent += "        if doesFileExist f then python.ExecuteFile f\n"
-		macroContent += "        else messageBox \"Arquivo principal deletado!\" title:\"Erro\"\n"
+		macroContent += "        if doesFileExist f then (\n"
+		macroContent += "            local pluginPath = getFileNamePath f\n"
+		macroContent += "            local srcRoot = substring pluginPath 1 (pluginPath.count - 5)\n"
+		macroContent += "            -- Convertendo barras para formato seguro do Python\n"
+		macroContent += "            srcRoot = substituteString srcRoot \"\\\\\" \"/\"\n"
+		macroContent += "            local pyCmd = \"import sys\\n\"\n"
+		macroContent += "            pyCmd += \"if '\" + srcRoot + \"' not in sys.path:\\n\"\n"
+		macroContent += "            pyCmd += \"    sys.path.insert(0, '\" + srcRoot + \"')\"\n"
+		macroContent += "            python.Execute pyCmd\n"
+		macroContent += "            python.ExecuteFile f\n"
+		macroContent += "        ) else messageBox \"Arquivo principal nao encontrado! Reinstale.\" title:\"Erro\"\n"
 		macroContent += "    )\n"
 		macroContent += ")"
-		try
-		(			
+		try (			
 			execute macroContent
-			messageBox "Instalação Concluída!\n\n1. Vá em Customize > Customize User Interface\n2. Toolbars > Category: NoobViz\n3. Arraste o botão para a barra." title: "Sucesso"
-		)
-		catch
-		(			
-			messageBox( "Erro ao criar botão: " + getCurrentException() )
-		)
+			messageBox "Instalacao Concluida!\n\n1. Va em Customize > Customize User Interface\n2. Toolbars > Category: NoobViz\n3. Arraste o botao para a barra." title: "Sucesso"
+		) catch ( messageBox( "Erro ao criar botao: " + getCurrentException() ) )
 	)
 	else
 	(		
-		local msg = "ERRO: Não foi possível encontrar o arquivo de origem.\n"
-		msg += "O instalador esperava encontrar o arquivo em:\n" + sourceFile
-		messageBox msg title: "Falha na Instalação"
+		local msg = "ERRO: Nao foi possivel encontrar os arquivos extraidos.\n"
+		messageBox msg title: "Falha na Instalacao"
 	)
 )

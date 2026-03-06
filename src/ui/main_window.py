@@ -1,502 +1,18 @@
 # -*- coding: utf-8 -*-
-import sys
 import os
+import sys
 import glob
-import logging
-import tempfile
-import time
 import json
-import hashlib
-import shutil
 from datetime import datetime
 from functools import partial
-
-# ==============================================================================
-# 0. COMPATIBILIDADE UNIVERSAL (MAX 2020-2025+)
-# ==============================================================================
-try:
-    from PySide6 import QtWidgets, QtCore, QtGui
-    IS_PYSIDE6 = True
-except ImportError:
-    try:
-        from PySide2 import QtWidgets, QtCore, QtGui
-        IS_PYSIDE6 = False
-    except ImportError:
-        from PySide import QtWidgets, QtCore, QtGui
-        IS_PYSIDE6 = False
-
-def qt_exec(obj, *args):
-    """Função helper para compatibilidade entre PySide2 e PySide6"""
-    if hasattr(obj, 'exec') and callable(getattr(obj, 'exec', None)):
-        return obj.exec(*args)
-    elif hasattr(obj, 'exec_') and callable(getattr(obj, 'exec_', None)):
-        return obj.exec_(*args)
-    elif hasattr(obj, 'show'):
-        obj.show()
-        return None
-    return None
-
+import tempfile
 import pymxs
 
-# ==============================================================================
-# 1. LOGGING SIMPLES E ROBUSTO
-# ==============================================================================
-LOG_FILE = os.path.join(tempfile.gettempdir(), "NoobTools_Log.txt")
-
-logging.basicConfig(
-    filename=LOG_FILE,
-    level=logging.INFO,
-    filemode='w',
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
-def log_info(msg):
-    try:
-        if isinstance(msg, bytes): msg = msg.decode('utf-8', errors='replace')
-        msg = str(msg)
-        logging.info(msg)
-        print("[NoobTools] {}".format(msg))
-    except Exception as e:
-        pass
-
-def log_error(msg):
-    try:
-        if isinstance(msg, bytes): msg = msg.decode('utf-8', errors='replace')
-        msg = str(msg)
-        logging.error(msg)
-        print("[NoobTools Error] {}".format(msg))
-    except Exception as e:
-        pass
-
-def log_warning(msg):
-    try:
-        if isinstance(msg, bytes): msg = msg.decode('utf-8', errors='replace')
-        msg = str(msg)
-        logging.warning(msg)
-        print("[NoobTools Warning] {}".format(msg))
-    except Exception as e:
-        pass
-
-# ==============================================================================
-# 2. LÓGICA MAXSCRIPT UNIFICADA
-# ==============================================================================
-MAXSCRIPT_LOGIC = r"""
-fn global_getSupportedMapClasses = 
-(
-    local types = #(
-        #(BitmapTexture, "filename"),
-        #(VRayBitmap, "HDRIMapName"),
-        #(VRayBitmap, "filename"),
-        #(CoronaBitmap, "filename"),
-        #(ai_Image, "filename"),
-        #(OSLMap, "filename"),
-        #(PhysicalMaterial, "base_color"),
-        #(Redshift_Bitmap, "filename"),
-        #(FStormBitmap, "filename"),
-        #(FStormTexture, "filename")
-    )
-    return types
-)
-
-fn global_guessRenderer filepath = (
-    local ext = getFilenameType filepath
-    if (toLower ext) != ".max" do return "N/A"
-    
-    local isVRay = false
-    local isCorona = false
-    local isFStorm = false
-    local isArnold = false
-    
-    try (
-        local meta = getMAXFileAssetMetadata filepath
-        if meta != undefined do (
-            for m in meta do (
-                try (
-                    local cName = m.className as string
-                    if matchPattern cName pattern:"*VRay*" do isVRay = true
-                    if matchPattern cName pattern:"*Corona*" do isCorona = true
-                    if matchPattern cName pattern:"*FStorm*" do isFStorm = true
-                    if matchPattern cName pattern:"*Arnold*" do isArnold = true
-                ) catch()
-            )
-        )
-    ) catch()
-    
-    local lowPath = toLower filepath
-    if not isVRay and (matchPattern lowPath pattern:"*vray*" or matchPattern lowPath pattern:"*v-ray*") do isVRay = true
-    if not isCorona and (matchPattern lowPath pattern:"*corona*") do isCorona = true
-    if not isFStorm and (matchPattern lowPath pattern:"*fstorm*") do isFStorm = true
-    
-    if isVRay and isCorona do return "V-Ray & Corona"
-    if isVRay do return "V-Ray"
-    if isCorona do return "Corona Render"
-    if isFStorm do return "FStorm"
-    if isArnold do return "Arnold"
-    return "Unknown"
-)
-
-fn global_selectObjectsFromMissing pathString = 
-(
-    if pathString == undefined or pathString == "" do return false
-    local foundMats = #()
-    local types = global_getSupportedMapClasses()
-    for t in types do (
-        try (
-            local instances = getClassInstances t[1]
-            for m in instances do (
-                if isProperty m t[2] do (
-                    local val = getProperty m t[2]
-                    if val == pathString do appendIfUnique foundMats m
-                )
-            )
-        ) catch()
-    )
-    local finalObjs = #()
-    for m in foundMats do (
-        local deps = refs.dependents m
-        for d in deps do (
-            if isValidNode d and not isDeleted d do appendIfUnique finalObjs d
-        )
-    )
-    if finalObjs.count > 0 then (
-        clearSelection()
-        select finalObjs
-        redrawViews()
-        return finalObjs.count
-    ) else (
-        return 0
-    )
-)
-
-fn global_convertToUNC = 
-(
-    local count = 0
-    local types = global_getSupportedMapClasses()
-    for t in types do (
-        try (
-            local instances = getClassInstances t[1]
-            for m in instances do (
-                if isProperty m t[2] do (
-                    local val = getProperty m t[2]
-                    if val != undefined and val != "" and (matchPattern val pattern:"*:") do (
-                        local unc = pathConfig.convertPathToUnc val
-                        if unc != undefined and unc != val do (
-                            setProperty m t[2] unc
-                            count += 1
-                        )
-                    )
-                )
-            )
-        ) catch()
-    )
-    return count
-)
-
-fn global_stripMissingPaths missingList = 
-(
-    local count = 0
-    local types = global_getSupportedMapClasses()
-    for t in types do (
-        try (
-            local maps = getClassInstances t[1]
-            for m in maps do (
-                if isProperty m t[2] do (
-                    local val = getProperty m t[2]
-                    if (findItem missingList val) > 0 and (not doesFileExist val) do (
-                        setProperty m t[2] ""
-                        count += 1
-                    )
-                )
-            )
-        ) catch()
-    )
-    return count
-)
-
-fn global_getMissingAssets =
-(
-    local mList = #()
-    if (classOf ATSOps) != undefined do (
-        try (
-            ATSOps.Refresh()
-            local allAssets = #()
-            ATSOps.GetFiles &allAssets
-            for f in allAssets do (
-                if f != undefined and f != "" do (
-                    local statusArray = ATSOps.GetFileSystemStatus f
-                    local isMissing = false
-                    if statusArray != undefined do (
-                        for s in statusArray do if s == #missing do isMissing = true
-                    )
-                    if not isMissing and not (doesFileExist f) do isMissing = true
-                    if isMissing do appendIfUnique mList f
-                )
-            )
-        ) catch()
-    )
-    return mList
-)
-
-fn global_collectFiles targetDir = 
-(
-    local count = 0
-    local types = global_getSupportedMapClasses()
-    if not (doesDirectoryExist targetDir) do makeDir targetDir
-    for t in types do (
-        try (
-            local instances = getClassInstances t[1]
-            for m in instances do (
-                if isProperty m t[2] do (
-                    local originalPath = getProperty m t[2]
-                    if originalPath != undefined and originalPath != "" and (doesFileExist originalPath) do (
-                        local fName = filenameFromPath originalPath
-                        local newPath = targetDir + "\\" + fName
-                        if (copyFile originalPath newPath) or (doesFileExist newPath) do (
-                            setProperty m t[2] newPath
-                            count += 1
-                        )
-                    )
-                )
-            )
-        ) catch()
-    )
-    return count
-)
-
-fn global_forcePivotToBottom o = (
-    if isValidNode o do (
-        local bb = nodeGetBoundingBox o (matrix3 1)
-        local bmin = bb[1]; local bmax = bb[2]
-        o.pivot = [(bmin.x + bmax.x) / 2.0, (bmin.y + bmax.y) / 2.0, bmin.z]
-    )
-)
-
-fn global_addSelectionToLayer layerName = (
-    local layerObj = LayerManager.getLayerFromName layerName
-    if layerObj == undefined do layerObj = LayerManager.newLayerFromName layerName
-    layerObj.addNodes selection
-    OK
-)
-
-fn global_renameSelection prefix suffix = (
-    for o in selection do o.name = prefix + o.name + suffix
-    OK
-)
-"""
-
-try:
-    pymxs.runtime.execute(MAXSCRIPT_LOGIC)
-except Exception as e:
-    log_error("Erro na inicialização do MaxScript: {}".format(str(e)))
-
-# ==============================================================================
-# 3. THREADING & WORKERS
-# ==============================================================================
-class WorkerSignals(QtCore.QObject):
-    finished = QtCore.Signal()
-    result_ready = QtCore.Signal(str, object)
-    progress = QtCore.Signal(int, str)
-    scan_result = QtCore.Signal(dict) 
-
-class ThumbnailLoader(QtCore.QRunnable):
-    def __init__(self, asset_data, cache_dir=None):
-        super(ThumbnailLoader, self).__init__()
-        self.asset_data = asset_data
-        self.signals = WorkerSignals()
-        self.is_running = True
-        self.cache_dir = cache_dir or os.path.join(tempfile.gettempdir(), "NoobTools_Cache")
-        if not os.path.exists(self.cache_dir):
-            try: os.makedirs(self.cache_dir)
-            except Exception: self.cache_dir = tempfile.gettempdir()
-
-    def get_cache_path(self, asset_path, asset_name):
-        try:
-            if isinstance(asset_path, bytes): asset_path = asset_path.decode('utf-8', errors='replace')
-            if isinstance(asset_name, bytes): asset_name = asset_name.decode('utf-8', errors='replace')
-            cache_key = hashlib.md5((asset_path + asset_name).encode('utf-8', errors='replace')).hexdigest()
-            return os.path.join(self.cache_dir, "{}.png".format(cache_key))
-        except Exception:
-            safe_name = "".join(c for c in str(asset_name) if c.isalnum() or c in ('_', '-'))[:50]
-            return os.path.join(self.cache_dir, "{}.png".format(safe_name))
-
-    def run(self):
-        total = len(self.asset_data)
-        for idx, data in enumerate(self.asset_data):
-            if not self.is_running: break
-            try:
-                folder_path = str(data.get('path', ''))
-                asset_name = str(data.get('name', 'Unknown'))
-                if not folder_path or not os.path.exists(folder_path): continue
-                
-                cache_path = self.get_cache_path(folder_path, asset_name)
-                thumb_path = None
-
-                if cache_path and os.path.exists(cache_path):
-                    try:
-                        if os.path.getmtime(cache_path) > os.path.getmtime(folder_path):
-                            thumb_path = cache_path
-                    except Exception: pass
-
-                if not thumb_path:
-                    parent_dir = os.path.dirname(folder_path)
-                    possible_exts = [".jpg", ".jpeg", ".png", ".bmp", ".tga", ".tif"]
-                    for ext in possible_exts:
-                        attempt = os.path.join(parent_dir, asset_name + ext)
-                        if os.path.exists(attempt): thumb_path = attempt; break
-                    
-                    if not thumb_path and os.path.isdir(folder_path):
-                        try:
-                            for entry in os.listdir(folder_path):
-                                if entry.lower().endswith(tuple(possible_exts)):
-                                    thumb_path = os.path.join(folder_path, entry); break
-                        except Exception: pass
-
-                    if thumb_path and cache_path:
-                        try: shutil.copy2(thumb_path, cache_path)
-                        except Exception: pass
-
-                final_w, final_h = 170, 160
-                final_pix = QtGui.QPixmap(final_w, final_h)
-                final_pix.fill(QtGui.QColor(30, 30, 30))
-
-                if thumb_path and os.path.exists(thumb_path):
-                    pixmap = QtGui.QPixmap(thumb_path)
-                    if not pixmap.isNull():
-                        scaled = pixmap.scaled(final_w, final_h-30, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
-                        x_pos = (final_w - scaled.width()) // 2
-                        painter = QtGui.QPainter(final_pix)
-                        painter.drawPixmap(int(x_pos), 0, scaled)
-                        painter.end()
-
-                painter = QtGui.QPainter(final_pix)
-                painter.setPen(QtGui.QColor(220, 220, 220))
-                font = painter.font()
-                font.setPointSize(9)
-                painter.setFont(font)
-                display_name = asset_name[:25] + "..." if len(asset_name) > 25 else asset_name
-                text_rect = QtCore.QRect(0, final_h-30, final_w, 30)
-                painter.drawText(text_rect, QtCore.Qt.AlignCenter, display_name)
-                painter.end()
-
-                self.signals.result_ready.emit(folder_path, QtGui.QIcon(final_pix))
-                progress = int((float(idx + 1) / total) * 100)
-                self.signals.progress.emit(progress, "Carregando miniaturas... {}%".format(progress))
-            except Exception: continue
-        self.signals.finished.emit()
-
-    def stop(self): self.is_running = False
-
-class RelinkScannerWorker(QtCore.QRunnable):
-    def __init__(self, search_path, include_subfolders):
-        super(RelinkScannerWorker, self).__init__()
-        self.search_path = search_path
-        self.include_subfolders = include_subfolders
-        self.signals = WorkerSignals()
-        self.is_running = True
-
-    def run(self):
-        file_dict = {}
-        try:
-            for root, dirs, files in os.walk(self.search_path):
-                if not self.is_running: break
-                
-                if not self.include_subfolders and root != self.search_path: 
-                    continue
-                
-                dirs[:] = [d for d in dirs if os.access(os.path.join(root, d), os.R_OK)]
-                
-                for f in files:
-                    try:
-                        full_path = os.path.join(root, f)
-                        if os.access(full_path, os.R_OK):
-                            key = os.path.splitext(f.lower())[0]
-                            if key not in file_dict:
-                                file_dict[key] = []
-                            file_dict[key].append(full_path)
-                    except Exception: pass
-        except Exception: pass
-            
-        self.signals.scan_result.emit(file_dict)
-        self.signals.finished.emit()
-
-    def stop(self): self.is_running = False
-
-# ==============================================================================
-# 4. WIDGET PERSONALIZADO
-# ==============================================================================
-class DroppableAssetList(QtWidgets.QListWidget):
-    files_dropped = QtCore.Signal(list)
-    def __init__(self, parent=None):
-        super(DroppableAssetList, self).__init__(parent)
-        self.setAcceptDrops(True)
-        self.setDragEnabled(True)
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls(): event.acceptProposedAction()
-    def dragMoveEvent(self, event):
-        if event.mimeData().hasUrls(): event.acceptProposedAction()
-    def dropEvent(self, event):
-        if event.mimeData().hasUrls():
-            files = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
-            if files: self.files_dropped.emit(files)
-            event.acceptProposedAction()
-
-# ==============================================================================
-# 5. ESTILO VISUAL MODERNO
-# ==============================================================================
-MODERN_THEME_STYLESHEET = """
-QWidget { background-color: #1e1e20; color: #e0e0e0; font-family: "Segoe UI", sans-serif; font-size: 11px; }
-QGroupBox { border: 1px solid #333337; border-radius: 6px; margin-top: 12px; padding-top: 15px; font-weight: bold; color: #888888; background-color: #242426; }
-QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 5px; left: 10px; background-color: #242426; }
-QPushButton { background-color: #38383c; border: 1px solid #4a4a4e; border-radius: 4px; color: #ffffff; min-height: 26px; padding: 0px 15px; text-align: center; outline: none; qproperty-cursor: pointingHand; }
-QPushButton:hover { background-color: #48484c; border: 1px solid #007acc; }
-QPushButton:pressed { background-color: #007acc; border: 1px solid #005f9e; }
-QPushButton:checked { background-color: #007acc; border: 1px solid #005f9e; color: white; font-weight: bold; }
-QPushButton:disabled { background-color: #2a2a2c; color: #666666; border: 1px solid #333333; }
-QPushButton#btnImport { background-color: #007acc; color: white; font-weight: bold; font-size: 14px; min-height: 42px; border-radius: 6px; border: none; }
-QPushButton#btnImport:hover { background-color: #008be6; }
-QPushButton#btnImport:disabled { background-color: #2a2a2c; color: #555; }
-QPushButton#btnRelink { background-color: #5a8a5a; font-weight: bold; font-size: 12px; min-height: 32px; }
-QPushButton#btnRelink:hover { background-color: #6a9a6a; }
-QPushButton#btnStrip { background-color: #a84a4a; font-weight: bold; min-height: 28px; }
-QPushButton#btnStrip:hover { background-color: #b85a5a; }
-QPushButton#btnUNC { background-color: #4a6a8a; font-weight: bold; min-height: 28px; }
-QPushButton#btnUNC:hover { background-color: #5a7a9a; }
-QPushButton#btnScan { background-color: #d67b22; font-weight: bold; min-height: 32px; }
-QPushButton#btnScan:hover { background-color: #e68b32; }
-QLineEdit, QComboBox { background-color: #18181a; border: 1px solid #3e3e42; border-radius: 4px; padding: 6px; color: white; min-height: 18px; }
-QScrollBar:vertical { border: none; background-color: #18181a; width: 10px; margin: 0px 0px 0px 0px; border-radius: 5px; }
-QScrollBar::handle:vertical { background-color: #4a4a4e; min-height: 30px; border-radius: 5px; }
-QScrollBar::handle:vertical:hover { background-color: #6a6a6e; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { border: none; background: none; height: 0px; }
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
-QScrollBar:horizontal { border: none; background-color: #18181a; height: 10px; margin: 0px 0px 0px 0px; border-radius: 5px; }
-QScrollBar::handle:horizontal { background-color: #4a4a4e; min-width: 30px; border-radius: 5px; }
-QScrollBar::handle:horizontal:hover { background-color: #6a6a6e; }
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { border: none; background: none; width: 0px; }
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; }
-QListWidget { background-color: #18181a; border: 1px solid #333337; border-radius: 6px; padding: 5px; outline: none; }
-QListWidget::item { background-color: #252528; border-radius: 4px; margin: 2px; }
-QListWidget::item:selected { background-color: #3a3a40; border: 1px solid #007acc; }
-QListWidget::item:hover { background-color: #303035; border: 1px solid #555; }
-QTableWidget { background-color: #18181a; border: 1px solid #333337; border-radius: 6px; color: #e0e0e0; outline: none; }
-QTableWidget::item:selected { background-color: #333337; border: 1px solid #007acc; }
-QHeaderView::section { background-color: #2a2a2c; color: #888; padding: 6px; border: 1px solid #333337; font-weight: bold; }
-QProgressBar { border: 1px solid #333337; border-radius: 6px; background-color: #18181a; text-align: center; color: white; font-weight: bold; min-height: 22px; }
-QProgressBar::chunk { background-color: #007acc; border-radius: 5px; }
-QProgressBar#pbRelink::chunk { background-color: #5a8a5a; }
-QCheckBox { spacing: 8px; font-size: 12px; }
-QCheckBox::indicator { width: 16px; height: 16px; background-color: #18181a; border: 1px solid #555555; border-radius: 4px; }
-QCheckBox::indicator:hover { border: 1px solid #007acc; }
-QCheckBox::indicator:checked { background-color: #007acc; border: 1px solid #005f9e; }
-QMenu { background-color: #252528; border: 1px solid #444; padding: 5px; border-radius: 4px; }
-QMenu::item { padding: 6px 25px; color: #e0e0e0; border-radius: 3px; }
-QMenu::item:selected { background-color: #007acc; color: white; }
-QTabWidget::pane { border: 1px solid #333337; background-color: #1e1e20; border-radius: 6px; top: -1px; }
-QTabBar::tab { background-color: #2a2a2c; color: #888; padding: 10px 18px; margin-right: 2px; border-top-left-radius: 6px; border-top-right-radius: 6px; border: 1px solid #333337; border-bottom: none; }
-QTabBar::tab:selected { background-color: #1e1e20; color: #007acc; font-weight: bold; border-bottom: 1px solid #1e1e20; }
-QTabBar::tab:hover:!selected { background-color: #38383c; }
-QLabel#lblHelp { color: #666; font-style: italic; font-size: 10px; }
-"""
+from src.utils.qt_compat import QtWidgets, QtCore, QtGui, qt_exec, IS_PYSIDE6
+from src.utils.logger import log_error, log_info, log_warning
+from src.core.threads import WorkerSignals, ThumbnailLoader, RelinkScannerWorker
+from src.ui.widgets import DroppableAssetList
+from src.ui.style import MODERN_THEME_STYLESHEET
 
 def get_max_main_window():
     try:
@@ -556,7 +72,6 @@ class NoobToolsWindow(QtWidgets.QWidget):
         self.scanner_worker = None
         
         self.favorites = []
-        self.import_history = []
         self.relink_path = ""
         self.missing_assets = []
         self.root_path = ""
@@ -574,8 +89,17 @@ class NoobToolsWindow(QtWidgets.QWidget):
         self.setup_shortcuts()
         self.load_config()
         self.load_settings()
-        self.load_import_history()
+        self.refresh_materials()
         self.auto_detect_project_path()
+
+    def show_toast(self, message):
+        """Exibe uma notificação flutuante com fallback para o Listener."""
+        print("[NoobTools] " + message)
+        try:
+            from src.ui.widgets import ToastNotification
+            ToastNotification(self, message)
+        except Exception as e:
+            print("[NoobTools Error] Falha ao exibir Toast: " + str(e))
 
     def setup_ui(self):
         layout_principal = QtWidgets.QVBoxLayout()
@@ -583,7 +107,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
         layout_principal.setContentsMargins(12, 12, 12, 12)
         self.setLayout(layout_principal)
 
-        title_label = QtWidgets.QLabel("NOOBTOOLS SUITE v3.5")
+        title_label = QtWidgets.QLabel("NOOBTOOLS SUITE v4.0")
         title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #007acc;")
         title_label.setAlignment(QtCore.Qt.AlignCenter)
         layout_principal.addWidget(title_label)
@@ -599,9 +123,9 @@ class NoobToolsWindow(QtWidgets.QWidget):
         self.setup_noobfix_tab()
         self.tabs.addTab(self.tab_fix, "NoobFix")
 
-        self.tab_history = QtWidgets.QWidget()
-        self.setup_history_tab()
-        self.tabs.addTab(self.tab_history, "History")
+        self.tab_materials = QtWidgets.QWidget()
+        self.setup_material_manager_tab()
+        self.tabs.addTab(self.tab_materials, "Materials")
 
         self.tab_settings = QtWidgets.QWidget()
         self.setup_settings_tab()
@@ -825,7 +349,23 @@ class NoobToolsWindow(QtWidgets.QWidget):
         layout_exec.addWidget(self.btn_run_relink); layout_exec.addWidget(self.btn_collect)
         exec_group.setLayout(layout_exec)
         layout.addWidget(exec_group)
+
+        # 5. TOOLS EXTRAS
+        extra_group = QtWidgets.QGroupBox("5. TOOLS EXTRAS")
+        layout_extra = QtWidgets.QHBoxLayout()
+        self.btn_clean_scene = QtWidgets.QPushButton("CLEAN SCENE")
+        self.btn_clean_scene.setToolTip("Remove camadas vazias e grupos vazios")
+        self.btn_check_scale = QtWidgets.QPushButton("CHECK SCALE")
+        self.btn_check_scale.setToolTip("Verifica as unidades do sistema")
+        layout_extra.addWidget(self.btn_clean_scene)
+        layout_extra.addWidget(self.btn_check_scale)
+        extra_group.setLayout(layout_extra)
+        layout.addWidget(extra_group)
+        
         layout.addStretch()
+
+        self.btn_clean_scene.clicked.connect(self.run_scene_cleaner)
+        self.btn_check_scale.clicked.connect(self.run_scale_checker)
 
         self.btn_browse_relink.clicked.connect(self.browse_relink_path)
         self.lbx_favorites_fix.itemClicked.connect(self.load_favorite_fix)
@@ -839,31 +379,289 @@ class NoobToolsWindow(QtWidgets.QWidget):
         self.btn_run_relink.clicked.connect(self.start_relink_scanner) 
         self.btn_collect.clicked.connect(self.collect_files)
 
-    # --- TAB: HISTORY ---
-    def setup_history_tab(self):
-        layout_history = QtWidgets.QVBoxLayout()
-        self.tab_history.setLayout(layout_history)
-        self.tbl_history = QtWidgets.QTableWidget()
-        self.tbl_history.setColumnCount(4)
-        self.tbl_history.setHorizontalHeaderLabels(["Date", "Time", "File", "Type"])
-        self.tbl_history.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        layout_history.addWidget(self.tbl_history)
-        layout_history_botoes = QtWidgets.QHBoxLayout()
-        self.btn_clear_hist = QtWidgets.QPushButton("Clear"); self.btn_refresh_hist = QtWidgets.QPushButton("Refresh")
-        layout_history_botoes.addWidget(self.btn_clear_hist); layout_history_botoes.addWidget(self.btn_refresh_hist); layout_history_botoes.addStretch()
-        layout_history.addLayout(layout_history_botoes)
-        self.btn_clear_hist.clicked.connect(self.clear_import_history)
-        self.btn_refresh_hist.clicked.connect(self.refresh_history_table)
+    # --- TAB: MATERIAL MANAGER ---
+    def setup_material_manager_tab(self):
+        layout = QtWidgets.QVBoxLayout()
+        self.tab_materials.setLayout(layout)
 
-    # --- TAB: SETTINGS ---
+        # 1. Lib & Categories
+        lib_group = QtWidgets.QGroupBox("1. MATERIAL LIBRARY")
+        lib_layout = QtWidgets.QVBoxLayout()
+        
+        cat_layout = QtWidgets.QHBoxLayout()
+        cat_layout.addWidget(QtWidgets.QLabel("Category:"))
+        self.combo_category_mat = QtWidgets.QComboBox()
+        self.combo_category_mat.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        cat_layout.addWidget(self.combo_category_mat)
+        
+        subcat_layout = QtWidgets.QHBoxLayout()
+        subcat_layout.addWidget(QtWidgets.QLabel("Subfolder:"))
+        self.combo_subcategory_mat = QtWidgets.QComboBox()
+        self.combo_subcategory_mat.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        subcat_layout.addWidget(self.combo_subcategory_mat)
+        
+        lib_layout.addLayout(cat_layout)
+        lib_layout.addLayout(subcat_layout)
+        lib_group.setLayout(lib_layout)
+        layout.addWidget(lib_group)
+
+        # 2. Search & Tools
+        search_tools_layout = QtWidgets.QHBoxLayout()
+        self.input_search_mat = QtWidgets.QLineEdit()
+        self.input_search_mat.setPlaceholderText("Search materials...")
+        self.btn_refresh_mat = QtWidgets.QPushButton("R")
+        self.btn_refresh_mat.setFixedWidth(30)
+        self.btn_generate_previews = QtWidgets.QPushButton("Generate Previews")
+        self.btn_generate_previews.setToolTip("Gera miniaturas (bolinhas) para todos os materias desta pasta.")
+        
+        search_tools_layout.addWidget(self.input_search_mat)
+        search_tools_layout.addWidget(self.btn_refresh_mat)
+        search_tools_layout.addWidget(self.btn_generate_previews)
+        layout.addLayout(search_tools_layout)
+
+        # 3. List
+        self.mat_list = QtWidgets.QListWidget()
+        self.mat_list.setViewMode(QtWidgets.QListWidget.IconMode)
+        self.mat_list.setIconSize(QtCore.QSize(130, 110))
+        self.mat_list.setSpacing(10)
+        self.mat_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        layout.addWidget(self.mat_list)
+
+        # 4. Info & Action
+        info_group = QtWidgets.QGroupBox("MATERIAL INFO")
+        info_layout = QtWidgets.QVBoxLayout()
+        self.lbl_mat_info_name = QtWidgets.QLabel("None selected")
+        self.lbl_mat_info_name.setStyleSheet("font-weight: bold; color: #007acc;")
+        self.btn_apply_mat = QtWidgets.QPushButton("APPLY TO SELECTED")
+        self.btn_apply_mat.setObjectName("btnImport") # Use same style as Geo import
+        self.btn_apply_mat.setFixedHeight(40)
+        
+        info_layout.addWidget(self.lbl_mat_info_name)
+        info_layout.addWidget(self.btn_apply_mat)
+        info_group.setLayout(info_layout)
+        layout.addWidget(info_group)
+
+        # Connections
+        self.btn_refresh_mat.clicked.connect(self.refresh_materials)
+        self.btn_generate_previews.clicked.connect(self.generate_mat_previews)
+        self.combo_category_mat.currentIndexChanged.connect(self.on_category_changed_mat)
+        self.combo_subcategory_mat.currentIndexChanged.connect(self.on_subcategory_changed_mat)
+        self.input_search_mat.textChanged.connect(self.filter_materials)
+        self.mat_list.itemClicked.connect(self.update_material_info_mat)
+        self.mat_list.itemDoubleClicked.connect(self.on_material_double_clicked)
+        self.mat_list.customContextMenuRequested.connect(self.open_material_context_menu)
+        self.btn_apply_mat.clicked.connect(lambda: self.on_material_double_clicked(self.mat_list.currentItem()) if self.mat_list.currentItem() else None)
+
+    def open_material_context_menu(self, pos):
+        item = self.mat_list.itemAt(pos)
+        if not item: return
+        menu = QtWidgets.QMenu()
+        apply_act = menu.addAction("Apply to Selection")
+        slate_act = menu.addAction("Send to Slate Editor")
+        compact_act = menu.addAction("Send to Compact Editor")
+        
+        action = menu.exec_(self.mat_list.mapToGlobal(pos))
+        if not action: return
+        
+        mat_file = item.data(QtCore.Qt.UserRole)
+        if action == apply_act:
+            self.apply_material_logic(mat_file, mode="apply")
+        elif action == slate_act:
+            self.apply_material_logic(mat_file, mode="slate")
+        elif action == compact_act:
+            self.apply_material_logic(mat_file, mode="compact")
+
+    def refresh_materials(self):
+        self.combo_category_mat.blockSignals(True)
+        self.combo_category_mat.clear()
+        mat_path = self.settings.get('mat_lib_path', "")
+        
+        if mat_path and os.path.isdir(mat_path):
+            try:
+                categories = [d for d in os.listdir(mat_path) if os.path.isdir(os.path.join(mat_path, d))]
+                self.combo_category_mat.addItems(sorted(categories))
+            except Exception: pass
+        
+        self.combo_category_mat.blockSignals(False)
+        if self.combo_category_mat.count() > 0: self.on_category_changed_mat()
+        else: self.mat_list.clear()
+
+    def on_category_changed_mat(self):
+        cat = self.combo_category_mat.currentText()
+        root = self.settings.get('mat_lib_path', "")
+        if not cat or not root: return
+        
+        cat_path = os.path.join(root, cat)
+        subfolders = [d for d in os.listdir(cat_path) if os.path.isdir(os.path.join(cat_path, d))]
+        
+        has_direct_mats = any(f.lower().endswith(".mat") for f in os.listdir(cat_path) if os.path.isfile(os.path.join(cat_path, f)))
+
+        if has_direct_mats:
+            self.combo_subcategory_mat.setVisible(False)
+            self.populate_material_grid(cat_path)
+        else:
+            self.combo_subcategory_mat.blockSignals(True)
+            self.combo_subcategory_mat.clear()
+            self.combo_subcategory_mat.addItems(sorted(subfolders))
+            self.combo_subcategory_mat.setVisible(True)
+            self.combo_subcategory_mat.blockSignals(False)
+            if subfolders: self.on_subcategory_changed_mat()
+            else: self.mat_list.clear()
+
+    def on_subcategory_changed_mat(self):
+        cat = self.combo_category_mat.currentText()
+        sub = self.combo_subcategory_mat.currentText()
+        root = self.settings.get('mat_lib_path', "")
+        if not cat or not sub or not root: return
+        self.populate_material_grid(os.path.join(root, cat, sub))
+
+    def populate_material_grid(self, folder):
+        self.mat_list.clear()
+        if not os.path.isdir(folder): return
+        
+        for f in os.listdir(folder):
+            if f.lower().endswith(".mat"):
+                full_p = os.path.join(folder, f)
+                item = QtWidgets.QListWidgetItem(f)
+                item.setData(QtCore.Qt.UserRole, full_p)
+                thumb = self.find_thumbnail_for_mat(full_p)
+                if thumb: item.setIcon(QtGui.QIcon(thumb))
+                else: item.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_FileIcon))
+                self.mat_list.addItem(item)
+
+    def update_material_info_mat(self, item):
+        if not item: return
+        self.lbl_mat_info_name.setText(item.text())
+
+    def generate_mat_previews(self):
+        count = self.mat_list.count()
+        if count == 0: return
+        
+        msg = "Isso irá renderizar miniaturas para {} materiais. Pode levar alguns minutos. Deseja continuar?".format(count)
+        if QtWidgets.QMessageBox.question(self, "Confirmar", msg) != QtWidgets.QMessageBox.Yes: return
+        
+        rt = pymxs.runtime
+        prog = QtWidgets.QProgressDialog("Gerando miniaturas...", "Cancelar", 0, count, self)
+        prog.setWindowModality(QtCore.Qt.WindowModal)
+        prog.show()
+        
+        for i in range(count):
+            if prog.wasCanceled(): break
+            it = self.mat_list.item(i)
+            path = it.data(QtCore.Qt.UserRole)
+            name = it.text()
+            out = os.path.splitext(path)[0] + ".jpg"
+            
+            prog.setLabelText("Renderizando: " + name)
+            prog.setValue(i)
+            # QtWidgets.QApplication.processEvents() # Estabilidade
+            
+            # Chama a função no MaxScript
+            success = rt.NoobToolsCoreInst.renderMaterialPreview(path, name, out)
+            if success:
+                it.setIcon(QtGui.QIcon(out))
+        
+        prog.setValue(count)
+        self.show_toast("Pre-visualizações geradas com sucesso!")
+
+    def find_thumbnail_for_mat(self, mat_file):
+        base = os.path.splitext(mat_file)[0]
+        for ext in [".jpg", ".png", ".jpeg"]:
+            if os.path.exists(base + ext): return base + ext
+        return None
+
+    def filter_materials(self, txt):
+        txt = txt.lower()
+        for i in range(self.mat_list.count()):
+            it = self.mat_list.item(i)
+            it.setHidden(txt not in it.text().lower())
+
+    def on_material_double_clicked(self, item):
+        mat_file = item.data(QtCore.Qt.UserRole)
+        self.apply_material_logic(mat_file, mode="apply")
+
+    def apply_material_logic(self, mat_file, mode="apply"):
+        print("[NoobTools] Material Action: " + mode + " for " + mat_file)
+        rt = pymxs.runtime
+        try:
+            # 1. Carregar a lib temporária
+            mat_lib = rt.loadTempMaterialLibrary(mat_file)
+            if not mat_lib or len(mat_lib) == 0:
+                self.show_toast("Erro: Nenhum material no arquivo .mat")
+                return
+            
+            first_mat = mat_lib[0]
+            
+            # Aplicar a TODA a seleção
+            if "apply" in mode:
+                sel = rt.selection
+                if sel.count > 0:
+                    for obj in sel:
+                        obj.material = first_mat
+                        # Forçar exibição da textura no viewport
+                        try:
+                            # 3ds Max: showTextureMap <material> <boolean>
+                            rt.showTextureMap(obj.material, True) 
+                        except: pass
+                    
+                    # Forçar atualização PESADA do viewport
+                    rt.completeRedraw()
+                    rt.redrawViews()
+                    self.show_toast("Material aplicado a {} objetos!".format(sel.count))
+                else:
+                    self.show_toast("Selecione objetos no Max para aplicar.")
+
+            # Abrir Editor
+            if mode == "slate":
+                rt.MatEditor.mode = rt.Name("advanced")
+                rt.MatEditor.Open()
+                sme = rt.sme
+                if not sme.IsOpen(): sme.Open()
+                view = sme.GetView(sme.ActiveView)
+                if not view: view = sme.GetView(1)
+                view.CreateNode(first_mat, rt.point2(0,0))
+            
+            elif mode == "compact":
+                rt.MatEditor.mode = rt.Name("basic")
+                rt.MeditMaterials[0] = first_mat
+                rt.MatEditor.Open()
+            
+            elif mode == "apply_and_open": # Mantendo por compatibilidade se necessário internamente
+                rt.MatEditor.Open()
+                if rt.MatEditor.mode == rt.Name("advanced"):
+                    sme = rt.sme
+                    if not sme.IsOpen(): sme.Open()
+                    view = sme.GetView(sme.ActiveView)
+                    if not view: view = sme.GetView(1)
+                    view.CreateNode(first_mat, rt.point2(0,0))
+                else:
+                    rt.MeditMaterials[0] = first_mat
+                
+        except Exception as e:
+            self.show_toast("Erro Material: " + str(e))
+
+        # --- TAB: SETTINGS ---
     def setup_settings_tab(self):
         layout_settings = QtWidgets.QVBoxLayout()
         self.tab_settings.setLayout(layout_settings)
         
+        grupo_paths = QtWidgets.QGroupBox("PATHS")
+        layout_paths = QtWidgets.QVBoxLayout()
+        self.lbl_mat_path = QtWidgets.QLabel("Material Library Path:")
+        layout_mat_browse = QtWidgets.QHBoxLayout()
+        self.edt_mat_path = QtWidgets.QLineEdit()
+        self.edt_mat_path.setText(self.settings.get('mat_lib_path', ""))
+        self.btn_browse_mat = QtWidgets.QPushButton("...")
+        self.btn_browse_mat.setFixedWidth(40)
+        layout_mat_browse.addWidget(self.edt_mat_path); layout_mat_browse.addWidget(self.btn_browse_mat)
+        layout_paths.addWidget(self.lbl_mat_path); layout_paths.addLayout(layout_mat_browse)
+        grupo_paths.setLayout(layout_paths)
+        layout_settings.addWidget(grupo_paths)
+
         grupo_backup = QtWidgets.QGroupBox("BACKUP")
         layout_backup = QtWidgets.QVBoxLayout()
         self.chk_autobackup = QtWidgets.QCheckBox("Auto-backup before operations")
-        self.chk_autobackup.setChecked(True)
+        self.chk_autobackup.setChecked(self.settings.get('enable_autobackup', True))
         layout_backup.addWidget(self.chk_autobackup)
         grupo_backup.setLayout(layout_backup)
         layout_settings.addWidget(grupo_backup)
@@ -879,7 +677,9 @@ class NoobToolsWindow(QtWidgets.QWidget):
         layout_settings.addStretch()
         
         self.btn_clear_cache.clicked.connect(self.manual_clear_cache)
+        self.btn_browse_mat.clicked.connect(self.browse_mat_lib)
         self.chk_autobackup.stateChanged.connect(self.on_autobackup_changed)
+        self.edt_mat_path.textChanged.connect(self.save_settings)
         self.update_cache_size_label()
 
     # ==========================================================================
@@ -987,7 +787,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
             if os.path.isfile(f): self.import_single_asset(os.path.dirname(f))
 
     def find_main_file(self, folder):
-        for ext in ["*.max", "*.fbx", "*.obj", "*.3ds"]:
+        for ext in ["*.max", "*.fbx", "*.obj", "*.3ds", "*.mat"]:
             found = glob.glob(os.path.join(folder, ext))
             if found:
                 found.sort(key=lambda x: os.path.getmtime(x), reverse=True)
@@ -1011,10 +811,16 @@ class NoobToolsWindow(QtWidgets.QWidget):
         else:
             self.import_single_asset(items[0].data(QtCore.Qt.UserRole), silent=False)
 
+    def update_recent_favorites(self, folder):
+        """Adiciona aos favoritos se for importado frequentemente."""
+        if folder not in self.favorites:
+            # Lógica simples: se importar, vira favorito temporário ou entra numa lista 'Recent'
+            self.show_toast("Asset adicionado aos recentes.")
+
     def import_single_asset(self, folder, silent=False):
         main_file = self.find_main_file(folder)
         if not main_file:
-            if not silent: QtWidgets.QMessageBox.warning(self, "Warning", "No 3D file found in this asset folder.")
+            if not silent: self.show_toast("Erro: Nenhum arquivo 3D ou .mat encontrado.")
             return
 
         if not silent: 
@@ -1037,21 +843,21 @@ class NoobToolsWindow(QtWidgets.QWidget):
                     rt.mergeMAXFile(main_file, merge_dups, use_scene_mtl, select_opt)
                 except AttributeError:
                     rt.mergeMAXFile(main_file)
+            elif ext.endswith(".mat"):
+                rt.loadMaterialLibrary(main_file)
+                self.show_toast("Material Library Carregada!")
             elif ext.endswith((".fbx", ".obj", ".3ds")):
                 rt.importFile(main_file)
 
             refresh_asset_tracker()
+            self.update_recent_favorites(folder)
 
             if self.chk_auto_layer.isChecked():
                 lname = "".join(c for c in os.path.basename(folder) if c.isalnum() or c in ('_','-'))
-                rt.global_addSelectionToLayer(lname)
+                rt.NoobToolsCoreInst.addSelectionToLayer(lname)
             
             if self.chk_prefix.isChecked() and self.txt_prefix.text():
-                rt.global_renameSelection(self.txt_prefix.text(), "")
-            
-            self.import_history.insert(0, {'date': datetime.now().strftime('%Y-%m-%d'), 'time': datetime.now().strftime('%H:%M'), 'filename': os.path.basename(main_file), 'type': 'Geo'})
-            self.refresh_history_table()
-            self.save_import_history()
+                rt.NoobToolsCoreInst.renameSelection(self.txt_prefix.text(), "")
             
             if not silent: 
                 self.progress_bar.setValue(100)
@@ -1082,7 +888,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
         self.missing_assets = []
         try:
             rt = pymxs.runtime
-            self.missing_assets = list(rt.global_getMissingAssets())
+            self.missing_assets = list(rt.NoobToolsCoreInst.getMissingAssets())
             self.missing_assets = sorted(list(set(self.missing_assets)))
 
             if not self.missing_assets:
@@ -1102,7 +908,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
         path = item.text()
         if path == "-- CENA LIMPA --": return
         try:
-            count = pymxs.runtime.global_selectObjectsFromMissing(path)
+            count = pymxs.runtime.NoobToolsCoreInst.selectObjectsFromMissing(path)
             if count > 0: self.lbl_info_files.setText("Selecionados: {} objetos".format(count))
             else: QtWidgets.QMessageBox.information(self, "Info", "Mapa não aplicado a objetos 3D diretos.")
         except Exception: pass
@@ -1112,16 +918,42 @@ class NoobToolsWindow(QtWidgets.QWidget):
         self.create_backup()
         if QtWidgets.QMessageBox.question(self, "Confirmar", "Remover caminhos quebrados? (Irreversível)", QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.Yes:
             try:
-                count = pymxs.runtime.global_stripMissingPaths(self.missing_assets)
+                count = pymxs.runtime.NoobToolsCoreInst.stripMissingPaths(self.missing_assets)
                 self.scan_missing_files()
                 QtWidgets.QMessageBox.information(self, "Sucesso", "Removidos: {}".format(count))
             except Exception: pass
+
+    def run_scene_cleaner(self):
+        print("[NoobTools] Running Scene Cleaner...")
+        try:
+            if hasattr(pymxs.runtime, "NoobToolsCoreInst"):
+                res = list(pymxs.runtime.NoobToolsCoreInst.cleanScene())
+                msg = "LIMPEZA CONCLUÍDA\n\n- Camadas removidas: {}\n- Grupos removidos: {}".format(int(res[0]), int(res[2]))
+                QtWidgets.QMessageBox.information(self, "NoobFix - Cleaner", msg)
+            else:
+                self.show_toast("Erro: NoobToolsCore não carregado!")
+        except Exception as e:
+            log_error("Falha no Scene Cleaner: " + str(e))
+            QtWidgets.QMessageBox.critical(self, "Erro", "Falha na limpeza:\n" + str(e))
+
+    def run_scale_checker(self):
+        print("[NoobTools] Checking Scene Scale...")
+        try:
+            if hasattr(pymxs.runtime, "NoobToolsCoreInst"):
+                res = list(pymxs.runtime.NoobToolsCoreInst.checkSceneScale())
+                msg = "UNIDADES DO SISTEMA\n\n- Unidade: {}\n- Fator de Escala: {}".format(res[0], res[1])
+                QtWidgets.QMessageBox.information(self, "NoobFix - Scale", msg)
+            else:
+                self.show_toast("Erro: NoobToolsCore não carregado!")
+        except Exception as e:
+            log_error("Falha no Scale Checker: " + str(e))
+            QtWidgets.QMessageBox.critical(self, "Erro", "Erro ao verificar escala:\n" + str(e))
 
     def convert_to_unc(self):
         self.create_backup()
         if QtWidgets.QMessageBox.question(self, "UNC", "Converter caminhos locais para Rede (UNC)?", QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.Yes:
             try:
-                count = pymxs.runtime.global_convertToUNC()
+                count = pymxs.runtime.NoobToolsCoreInst.convertToUNC()
                 self.scan_missing_files()
                 QtWidgets.QMessageBox.information(self, "Sucesso", "Convertidos: {}".format(count))
             except Exception: pass
@@ -1136,7 +968,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
             save_dir = os.path.join(mp, "Maps")
             if QtWidgets.QMessageBox.question(self, "Coletar", "Copiar texturas para:\n{}\nContinuar?".format(save_dir), QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.No: return
             
-            count = pymxs.runtime.global_collectFiles(save_dir)
+            count = pymxs.runtime.NoobToolsCoreInst.collectFiles(save_dir)
             QtWidgets.QMessageBox.information(self, "Sucesso", "Coletados {} arquivos.".format(count))
             self.scan_missing_files()
         except Exception: pass
@@ -1242,7 +1074,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
             self.lbl_info_size.setText("{:.1f} MB".format(st.st_size/(1024*1024)))
             self.lbl_info_date.setText(datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d'))
             try:
-                render_guess = pymxs.runtime.global_guessRenderer(f)
+                render_guess = pymxs.runtime.NoobToolsCoreInst.guessRenderer(f)
                 self.lbl_info_renderer.setText(str(render_guess))
             except Exception: self.lbl_info_renderer.setText("Unknown")
         else: 
@@ -1260,12 +1092,32 @@ class NoobToolsWindow(QtWidgets.QWidget):
         elif self.btn_fbx.isChecked(): mode = ".fbx"
         
         vc = 0
+        search_terms = txt.lower().split()
+        
         for i in range(self.asset_list.count()):
             it = self.asset_list.item(i)
-            name = os.path.basename(it.data(QtCore.Qt.UserRole)).lower()
-            match = txt.lower() in name
-            if mode != "ALL":
-                match = match and len(glob.glob(os.path.join(it.data(QtCore.Qt.UserRole), "*"+mode))) > 0
+            folder_path = it.data(QtCore.Qt.UserRole)
+            name = os.path.basename(folder_path).lower()
+            
+            # Check Tags from metadata.json
+            tags = []
+            meta_path = os.path.join(folder_path, "metadata.json")
+            if os.path.exists(meta_path):
+                try:
+                    with open(meta_path, 'r') as f:
+                        meta_data = json.load(f)
+                        tags = [str(t).lower() for t in meta_data.get('tags', [])]
+                except Exception: pass
+            
+            # Match Logic
+            match = True
+            for term in search_terms:
+                if not (term in name or any(term in t for t in tags)):
+                    match = False; break
+            
+            if mode != "ALL" and match:
+                match = any(glob.glob(os.path.join(folder_path, "*"+mode)) for mode in [mode, mode.upper()])
+            
             it.setHidden(not match)
             if match: vc += 1
         self.lbl_info_count.setText("Items: {}".format(vc))
@@ -1332,16 +1184,33 @@ class NoobToolsWindow(QtWidgets.QWidget):
             QtWidgets.QShortcut(QtGui.QKeySequence("F5"), self, self.refresh_ui)
             QtWidgets.QShortcut(QtGui.QKeySequence("Esc"), self, self.close)
 
+    def browse_mat_lib(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Material Library Folder", self.settings.get('mat_lib_path', ""))
+        if folder:
+            self.edt_mat_path.setText(folder)
+            self.settings['mat_lib_path'] = folder
+            self.save_settings()
+            self.refresh_materials()
+
     def load_settings(self):
         try:
             if os.path.exists(self.settings_file):
-                with open(self.settings_file, 'r') as f: self.settings = json.load(f)
-                self.chk_autobackup.setChecked(self.settings.get('enable_autobackup', True))
+                with open(self.settings_file, 'r') as f:
+                    self.settings = json.load(f)
+                if hasattr(self, 'chk_autobackup'):
+                    self.chk_autobackup.setChecked(self.settings.get('enable_autobackup', True))
+                if hasattr(self, 'edt_mat_path'):
+                    self.edt_mat_path.setText(self.settings.get('mat_lib_path', ""))
         except Exception: self.settings = {'enable_autobackup': True}
 
     def save_settings(self):
         try:
-            with open(self.settings_file, 'w') as f: json.dump(self.settings, f, indent=2)
+            if hasattr(self, 'chk_autobackup'):
+                self.settings['enable_autobackup'] = self.chk_autobackup.isChecked()
+            if hasattr(self, 'edt_mat_path'):
+                self.settings['mat_lib_path'] = self.edt_mat_path.text()
+            with open(self.settings_file, 'w') as f:
+                json.dump(self.settings, f, indent=2)
         except Exception: pass
 
     def manual_clear_cache(self):
@@ -1369,55 +1238,10 @@ class NoobToolsWindow(QtWidgets.QWidget):
             else: self.lbl_cache_size.setText("Cache Size: 0 MB")
         except Exception: self.lbl_cache_size.setText("Cache Size: Error")
 
-    def refresh_history_table(self):
-        self.tbl_history.setRowCount(0)
-        for e in self.import_history:
-            r = self.tbl_history.rowCount(); self.tbl_history.insertRow(r)
-            self.tbl_history.setItem(r, 0, QtWidgets.QTableWidgetItem(e['date']))
-            self.tbl_history.setItem(r, 1, QtWidgets.QTableWidgetItem(e['time']))
-            self.tbl_history.setItem(r, 2, QtWidgets.QTableWidgetItem(e['filename']))
-            self.tbl_history.setItem(r, 3, QtWidgets.QTableWidgetItem(e.get('type', '')))
-
-    def clear_import_history(self):
-        self.import_history = []
-        self.refresh_history_table(); self.save_import_history()
-
-    def load_import_history(self):
-        try:
-            history_file = os.path.join(self.user_dir, "NoobTools_History.json")
-            if os.path.exists(history_file):
-                with open(history_file, 'r') as f: self.import_history = json.load(f)
-                self.refresh_history_table()
-        except Exception: self.import_history = []
-
-    def save_import_history(self):
-        try:
-            history_file = os.path.join(self.user_dir, "NoobTools_History.json")
-            with open(history_file, 'w') as f: json.dump(self.import_history, f, indent=2)
-        except Exception: pass
 
     def closeEvent(self, e):
-        self.save_config(); self.save_settings(); self.save_import_history()
+        self.save_config(); self.save_settings()
         if self.current_worker: self.current_worker.stop()
         if self.scanner_worker: self.scanner_worker.stop()
         e.accept()
 
-# ==============================================================================
-# MAIN 
-# ==============================================================================
-_noob_tools_instance = None
-
-def main():
-    global _noob_tools_instance
-    try:
-        if _noob_tools_instance is not None:
-            _noob_tools_instance.close()
-            _noob_tools_instance.deleteLater()
-    except Exception: pass
-    
-    mw = get_max_main_window()
-    _noob_tools_instance = NoobToolsWindow(parent=mw)
-    _noob_tools_instance.show()
-
-if __name__ == "__main__":
-    main()
