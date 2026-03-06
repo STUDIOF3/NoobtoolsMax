@@ -61,7 +61,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super(NoobToolsWindow, self).__init__(parent, QtCore.Qt.Window | QtCore.Qt.Tool)
 
-        self.setWindowTitle("NoobTools Suite v4.12 - Modern & Smooth UI")
+        self.setWindowTitle("NoobTools")
         self.resize(480, 920)
         self.setMinimumSize(480, 820)
         self.setStyleSheet(MODERN_THEME_STYLESHEET) 
@@ -75,11 +75,24 @@ class NoobToolsWindow(QtWidgets.QWidget):
         self.relink_path = ""
         self.missing_assets = []
         self.root_path = ""
-        self.user_dir = os.path.expanduser("~")
-        self.config_file = os.path.join(self.user_dir, "NoobTools_Config.ini")
+        
+        # Caminhos de Configuração unificados no AppData
+        self.app_data_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser("~")), "NoobTools")
+        if not os.path.exists(self.app_data_dir):
+            try: os.makedirs(self.app_data_dir)
+            except Exception: pass
+            
+        self.settings_file = os.path.join(self.app_data_dir, "settings.json")
         self.cache_dir = os.path.join(tempfile.gettempdir(), "NoobTools_Cache")
-        self.settings = {'enable_autobackup': True}
-        self.settings_file = os.path.join(self.user_dir, "NoobTools_Settings.json")
+        
+        # Estado inicial das configurações
+        self.settings = {
+            'lib_path': "",
+            'mat_lib_path': "",
+            'enable_autobackup': True,
+            'favs': [],
+            'favs_fix': []
+        }
 
         if not os.path.exists(self.cache_dir):
             try: os.makedirs(self.cache_dir)
@@ -87,8 +100,12 @@ class NoobToolsWindow(QtWidgets.QWidget):
 
         self.setup_ui()
         self.setup_shortcuts()
-        self.load_config()
-        self.load_settings()
+        
+        # Bloquear sinais durante o carregamento inicial para evitar sobrescrever com dados vazios
+        self.block_signals(True)
+        self.load_all_settings()
+        self.block_signals(False)
+        
         self.refresh_materials()
         self.auto_detect_project_path()
 
@@ -678,8 +695,8 @@ class NoobToolsWindow(QtWidgets.QWidget):
         
         self.btn_clear_cache.clicked.connect(self.manual_clear_cache)
         self.btn_browse_mat.clicked.connect(self.browse_mat_lib)
-        self.chk_autobackup.stateChanged.connect(self.on_autobackup_changed)
-        self.edt_mat_path.textChanged.connect(self.save_settings)
+        self.chk_autobackup.stateChanged.connect(self.save_all_settings)
+        self.edt_mat_path.textChanged.connect(self.save_all_settings)
         self.update_cache_size_label()
 
     # ==========================================================================
@@ -692,7 +709,8 @@ class NoobToolsWindow(QtWidgets.QWidget):
         if f:
             self.root_path = self.safe_path(f)
             self.lbl_path.setText(self.root_path)
-            self.save_config(); self.refresh_ui()
+            self.save_all_settings()
+            self.refresh_ui()
 
     def refresh_ui(self):
         self.combo_category.blockSignals(True)
@@ -1139,7 +1157,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
     
     def open_favorites_menu(self, pos):
         m = QtWidgets.QMenu(self)
-        m.addAction("Add Current").triggered.connect(lambda: (self.favorites.append(self.root_path), self.save_config()))
+        m.addAction("Add Current").triggered.connect(lambda: (self.favorites.append(self.root_path), self.save_all_settings()))
         for fav in self.favorites:
             fav_path = fav
             m.addAction(os.path.basename(fav)).triggered.connect(partial(lambda f: (setattr(self, 'root_path', f), self.lbl_path.setText(f), self.refresh_ui()), fav_path))
@@ -1150,30 +1168,9 @@ class NoobToolsWindow(QtWidgets.QWidget):
             self.relink_path = item.text(); self.edt_relink_path.setText(self.relink_path); self.btn_run_relink.setEnabled(True)
     def add_favorite_fix(self):
         if self.relink_path and self.relink_path not in [self.lbx_favorites_fix.item(i).text() for i in range(self.lbx_favorites_fix.count())]:
-            self.lbx_favorites_fix.addItem(self.relink_path); self.save_config()
+            self.lbx_favorites_fix.addItem(self.relink_path); self.save_all_settings()
     def del_favorite_fix(self):
-        self.lbx_favorites_fix.takeItem(self.lbx_favorites_fix.currentRow()); self.save_config()
-
-    def load_config(self):
-        s = QtCore.QSettings(self.config_file, QtCore.QSettings.IniFormat)
-        self.root_path = s.value("LibPath", "")
-        favs_raw = s.value("Favs")
-        if favs_raw is None or favs_raw == "": self.favorites = []
-        elif isinstance(favs_raw, str): self.favorites = [favs_raw] if favs_raw else []
-        elif isinstance(favs_raw, list): self.favorites = [f for f in favs_raw if f]
-        else: self.favorites = []
-        favsfix_raw = s.value("FavsFix")
-        if favsfix_raw is None or favsfix_raw == "": favsfix_list = []
-        elif isinstance(favsfix_raw, str): favsfix_list = [favsfix_raw] if favsfix_raw else []
-        elif isinstance(favsfix_raw, list): favsfix_list = [f for f in favsfix_raw if f]
-        else: favsfix_list = []
-        self.lbx_favorites_fix.addItems(favsfix_list)
-        if self.root_path: self.lbl_path.setText(self.root_path); self.refresh_ui()
-
-    def save_config(self):
-        s = QtCore.QSettings(self.config_file, QtCore.QSettings.IniFormat)
-        s.setValue("LibPath", self.root_path); s.setValue("Favs", self.favorites)
-        s.setValue("FavsFix", [self.lbx_favorites_fix.item(i).text() for i in range(self.lbx_favorites_fix.count())])
+        self.lbx_favorites_fix.takeItem(self.lbx_favorites_fix.currentRow()); self.save_all_settings()
 
     def setup_shortcuts(self):
         # AQUI ESTÁ A CORREÇÃO MÁGICA PARA FUNCIONAR EM QUALQUER VERSÃO!
@@ -1189,29 +1186,62 @@ class NoobToolsWindow(QtWidgets.QWidget):
         if folder:
             self.edt_mat_path.setText(folder)
             self.settings['mat_lib_path'] = folder
-            self.save_settings()
+            self.save_all_settings()
             self.refresh_materials()
 
-    def load_settings(self):
+    def load_all_settings(self):
+        """Carrega todas as configurações do arquivo JSON único no AppData."""
         try:
             if os.path.exists(self.settings_file):
-                with open(self.settings_file, 'r') as f:
-                    self.settings = json.load(f)
-                if hasattr(self, 'chk_autobackup'):
-                    self.chk_autobackup.setChecked(self.settings.get('enable_autobackup', True))
-                if hasattr(self, 'edt_mat_path'):
-                    self.edt_mat_path.setText(self.settings.get('mat_lib_path', ""))
-        except Exception: self.settings = {'enable_autobackup': True}
+                with open(self.settings_file, 'r', encoding='utf-8') as f:
+                    loaded = json.load(f)
+                    self.settings.update(loaded)
+            
+            # Aplicar valores carregados aos atributos e widgets
+            self.root_path = self.settings.get('lib_path', "")
+            self.favorites = self.settings.get('favs', [])
+            
+            if self.root_path:
+                self.lbl_path.setText(self.root_path)
+                self.refresh_ui()
+                
+            self.lbx_favorites_fix.clear()
+            self.lbx_favorites_fix.addItems(self.settings.get('favs_fix', []))
+            
+            if hasattr(self, 'chk_autobackup'):
+                self.chk_autobackup.setChecked(self.settings.get('enable_autobackup', True))
+            if hasattr(self, 'edt_mat_path'):
+                self.edt_mat_path.setText(self.settings.get('mat_lib_path', ""))
+                
+        except Exception as e:
+            print("[NoobTools] Erro ao carregar configurações: " + str(e))
 
-    def save_settings(self):
+    def save_all_settings(self):
+        """Salva todas as configurações em um arquivo JSON único no AppData."""
+        if getattr(self, '_blocking_signals', False): return
+        
         try:
+            # Atualizar dicionário de configurações com valores atuais da UI
+            self.settings['lib_path'] = self.root_path
+            self.settings['favs'] = self.favorites
+            self.settings['favs_fix'] = [self.lbx_favorites_fix.item(i).text() for i in range(self.lbx_favorites_fix.count())]
+            
             if hasattr(self, 'chk_autobackup'):
                 self.settings['enable_autobackup'] = self.chk_autobackup.isChecked()
             if hasattr(self, 'edt_mat_path'):
                 self.settings['mat_lib_path'] = self.edt_mat_path.text()
-            with open(self.settings_file, 'w') as f:
-                json.dump(self.settings, f, indent=2)
-        except Exception: pass
+                
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print("[NoobTools] Erro ao salvar configurações: " + str(e))
+
+    def block_signals(self, status):
+        """Utilitário para bloquear salvamento automático durante carregamento."""
+        self._blocking_signals = status
+        # Também bloquear sinais dos widgets críticos
+        if hasattr(self, 'chk_autobackup'): self.chk_autobackup.blockSignals(status)
+        if hasattr(self, 'edt_mat_path'): self.edt_mat_path.blockSignals(status)
 
     def manual_clear_cache(self):
         try:
@@ -1224,7 +1254,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
         except Exception: pass
 
     def on_autobackup_changed(self):
-        self.settings['enable_autobackup'] = self.chk_autobackup.isChecked(); self.save_settings()
+        self.save_all_settings()
 
     def update_cache_size_label(self):
         try:
@@ -1240,7 +1270,7 @@ class NoobToolsWindow(QtWidgets.QWidget):
 
 
     def closeEvent(self, e):
-        self.save_config(); self.save_settings()
+        self.save_all_settings()
         if self.current_worker: self.current_worker.stop()
         if self.scanner_worker: self.scanner_worker.stop()
         e.accept()

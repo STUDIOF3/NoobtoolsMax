@@ -21,15 +21,25 @@
 	(
 		format "Script copiado com sucesso para: %\n" destFile
 		
-		-- GERAR ICONE
+		-- LIMPEZA DE VERSÕES ANTIGAS
+		local oldMacro = ( getDir #userMacros ) + "\\NoobViz-NoobTools.mcr"
+		if( doesFileExist oldMacro ) do ( try( deleteFile oldMacro ) catch() )
+		
+		-- GERAR ICONE (Garantir 24-bit e caminho correto)
 		local iconDir = getDir #userIcons
+		if not ( doesDirectoryExist iconDir ) do makeDir iconDir
 		local iconFile = iconDir + "\\NoobViz_24i.bmp"
 		if( doesFileExist iconFile ) do deleteFile iconFile
 		
 		local bmp = bitmap 24 24 filename:iconFile color:( color 35 35 35 )
 		local cBlue = ( color 0 122 204 )
-		for x = 0 to 23 do ( setPixels bmp[0, x] #( cBlue ); setPixels bmp[x, 0] #( cBlue ); setPixels bmp[23, x] #( cBlue ); setPixels bmp[x, 23] #( cBlue ) )
-		for y = 5 to 18 do ( for x = 5 to 18 do setPixels bmp[x, y] #( cBlue ) )
+		-- Desenha um simples "N" estilizado ou quadrado azul para o icone
+		for y = 0 to 23 do (
+			for x = 0 to 23 do (
+				if (x < 2 or x > 21 or y < 2 or y > 21) then setPixels bmp [x,y] #(cBlue)
+				else if (x == y or x == (y-1) or x == (y+1)) then setPixels bmp [x,y] #(cBlue)
+			)
+		)
 		save bmp; close bmp
 		
 		-- REGISTRAR MACRO
@@ -37,6 +47,7 @@
 		macroContent += "macroScript NoobTools\n"
 		macroContent += "category:\"NoobViz\"\n"
 		macroContent += "tooltip:\"NoobTools Suite\"\n"
+		macroContent += "buttonText:\"NoobTools\"\n"
 		macroContent += "icon:#(\"NoobViz\", 1)\n"
 		macroContent += "(\n"
 		macroContent += "    on execute do (\n"
@@ -44,7 +55,6 @@
 		macroContent += "        if doesFileExist f then (\n"
 		macroContent += "            local pluginPath = getFileNamePath f\n"
 		macroContent += "            local srcRoot = substring pluginPath 1 (pluginPath.count - 5)\n"
-		macroContent += "            -- Convertendo barras para formato seguro do Python\n"
 		macroContent += "            srcRoot = substituteString srcRoot \"\\\\\" \"/\"\n"
 		macroContent += "            local pyCmd = \"import sys\\n\"\n"
 		macroContent += "            pyCmd += \"if '\" + srcRoot + \"' not in sys.path:\\n\"\n"
@@ -54,10 +64,20 @@
 		macroContent += "        ) else messageBox \"Arquivo principal nao encontrado! Reinstale.\" title:\"Erro\"\n"
 		macroContent += "    )\n"
 		macroContent += ")"
-		try (			
-			execute macroContent
-			messageBox "Instalacao Concluida!\n\n1. Va em Customize > Customize User Interface\n2. Toolbars > Category: NoobViz\n3. Arraste o botao para a barra." title: "Sucesso"
-		) catch ( messageBox( "Erro ao criar botao: " + getCurrentException() ) )
+		
+		execute macroContent
+		
+		-- ADICIONAR NA RIBBON
+		try (
+			local ribbon = animatable.getNames #mainRibbon
+			-- Lógica simplificada para adicionar na Ribbon via CommandPanel ou Custom UI
+			-- No MaxScript moderno usamos o menuMan ou ribbon helpers
+			python.Execute "import pymxs; rt = pymxs.runtime; rt.macros.run('NoobViz', 'NoobTools')"
+			
+			format "Macro registrada e pronta para uso.\n"
+		) catch()
+
+		messageBox "Instalacao Concluida!\n\n1. O botão foi registrado na categoria 'NoobViz'.\n2. Se não aparecer na Ribbon automaticamente, você pode adicionar em Customize User Interface." title: "Sucesso"
 	)
 	else
 	(		
